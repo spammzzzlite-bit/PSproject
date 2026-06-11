@@ -208,7 +208,7 @@ function SettingsPage() {
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  className="rounded-[8px] bg-[var(--c-text)] px-4 py-2 text-[12px] font-medium text-white hover:bg-[#2C2825] transition-colors"
+                  className="rounded-[8px] bg-[var(--c-text)] px-4 py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90 transition-colors"
                 >
                   Save profile
                 </button>
@@ -275,7 +275,7 @@ function SettingsPage() {
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  className="rounded-[8px] bg-[var(--c-text)] px-4 py-2 text-[12px] font-medium text-white hover:bg-[#2C2825] transition-colors"
+                  className="rounded-[8px] bg-[var(--c-text)] px-4 py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90 transition-colors"
                 >
                   Save security
                 </button>
@@ -332,7 +332,7 @@ function SettingsPage() {
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  className="rounded-[8px] bg-[var(--c-text)] px-4 py-2 text-[12px] font-medium text-white hover:bg-[#2C2825] transition-colors"
+                  className="rounded-[8px] bg-[var(--c-text)] px-4 py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90 transition-colors"
                 >
                   Save preferences
                 </button>

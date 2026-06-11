@@ -365,7 +365,7 @@ function NewBugDrawer({ onClose }: { onClose: () => void }) {
           <button
             type="submit"
             disabled={!isValid}
-            className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-white transition-all hover:bg-[#2C2825] disabled:opacity-40"
+            className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-[var(--c-bg)] transition-all hover:opacity-90 disabled:opacity-40"
           >
             Report Bug
           </button>

@@ -336,7 +336,7 @@ function IntegrationConfig({ integration, connected, toggleConnection }: ConfigP
           onClick={() => {
             toast.success("Integration settings saved");
           }}
-          className="rounded-lg bg-[var(--c-text)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--c-accent)] hover:shadow-md transition-all"
+          className="rounded-lg bg-[var(--c-text)] px-4 py-2.5 text-sm font-semibold text-[var(--c-bg)] hover:bg-[var(--c-accent)] hover:shadow-md transition-all"
         >
           Save Configuration
         </button>

@@ -383,7 +383,7 @@ function AuthPage() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-[8px] bg-[var(--c-text)] h-[44px] text-[14px] font-medium text-white transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:bg-[#2C2825] hover:shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:-translate-y-0 disabled:hover:shadow-none"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-[8px] bg-[var(--c-text)] h-[44px] text-[14px] font-medium text-[var(--c-bg)] transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:opacity-90 hover:shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:-translate-y-0 disabled:hover:shadow-none"
             >
               {loading && <div className="h-4 w-4 animate-spin rounded-full border-2 border-[rgba(255,255,255,0.3)] border-t-white" />}
               {loading ? "Please wait…" : isSignup ? "Open account →" : "Sign in →"}

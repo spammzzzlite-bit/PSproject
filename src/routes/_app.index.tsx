@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import {
   FileText, CheckCircle2, XCircle, Clock,
@@ -45,21 +45,85 @@ function useCountUp(target: number, duration = 300): number {
   return value;
 }
 
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  if (data.length === 0 || data.every((d) => d === 0)) {
-    return null;
-  }
-  const max = Math.max(...data, 1);
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * 60;
-    const y = 18 - (v / max) * 16;
-    return `${x},${y}`;
-  }).join(" ");
+function BarSparkline({ data, color }: { data: { value: number | null, label: string }[] | null; color: string }) {
+  const isSkeleton = data === null;
+  const renderData = isSkeleton 
+    ? Array.from({ length: 7 }, () => ({ value: null as number | null, label: "" }))
+    : data;
 
+  const max = isSkeleton ? 1 : Math.max(1, ...renderData.map(d => d.value || 0));
+  
   return (
-    <svg viewBox="0 0 60 20" className="h-5 w-16 shrink-0">
-      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <div className="relative mt-6 w-full h-[40px] sparklinewrapper" aria-hidden="true">
+      <style>{`
+        .sparklinewrapper:has(.bar-0:hover) .tt-0 { opacity: 1 !important; }
+        .sparklinewrapper:has(.bar-1:hover) .tt-1 { opacity: 1 !important; }
+        .sparklinewrapper:has(.bar-2:hover) .tt-2 { opacity: 1 !important; }
+        .sparklinewrapper:has(.bar-3:hover) .tt-3 { opacity: 1 !important; }
+        .sparklinewrapper:has(.bar-4:hover) .tt-4 { opacity: 1 !important; }
+        .sparklinewrapper:has(.bar-5:hover) .tt-5 { opacity: 1 !important; }
+        .sparklinewrapper:has(.bar-6:hover) .tt-6 { opacity: 1 !important; }
+      `}</style>
+      
+      {!isSkeleton && renderData.map((d, i) => {
+        if (d.value === null) return null;
+        const leftPct = `${(i * 2 + 1) / 14 * 100}%`;
+        return (
+          <div 
+            key={`tt-${i}`}
+            className={`tt-${i} absolute bottom-[100%] mb-1 -translate-x-1/2 z-10 pointer-events-none opacity-0 transition-opacity duration-200`}
+            style={{ left: leftPct }}
+          >
+            <div className="whitespace-nowrap rounded-[4px] bg-[var(--c-text)] px-1.5 py-0.5 text-[9px] font-mono text-[var(--c-bg)] shadow-md">
+              {d.label}: {d.value}
+            </div>
+          </div>
+        );
+      })}
+
+      <svg viewBox="0 0 132 40" className="absolute inset-0 w-full h-full overflow-visible">
+        {renderData.map((d, i) => {
+          const isPlaceholder = d.value === null || d.value === 0;
+          let barHeight = 2;
+          let opacity = 0.3;
+          let barColor = 'var(--c-text-muted)';
+          
+          if (isSkeleton) {
+            barHeight = 15;
+            opacity = 0.1;
+            barColor = color;
+          } else if (isPlaceholder) {
+            barHeight = 2;
+            opacity = 0.3;
+            barColor = 'var(--c-text-muted)';
+          } else {
+            barHeight = Math.max(2, (d.value! / max) * 40);
+            const isLast = i === renderData.length - 1;
+            opacity = isLast ? 1 : 0.6;
+            barColor = color;
+          }
+
+          const y = 40 - barHeight;
+          const x = i * 20;
+          
+          return (
+            <g key={i} className={`bar-${i} cursor-default`}>
+              <rect x={x - 4} y={0} width={20} height={40} fill="transparent" />
+              <rect
+                x={x}
+                y={y}
+                width={12}
+                height={barHeight}
+                fill={barColor}
+                opacity={opacity}
+                rx={1.5}
+                className={isSkeleton ? "" : "transition-opacity duration-200 hover:opacity-100"}
+              />
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -70,6 +134,12 @@ function Dashboard() {
   const [suites] = useSuites();
   const [showNewProject, setShowNewProject] = useState(false);
   const { openPanel } = usePanel();
+  const navigate = useNavigate();
+
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // ─── Empty state: user has no projects (onboarding CTA) ───
   if (projects.length === 0) {
@@ -98,38 +168,79 @@ function Dashboard() {
 
   // ─── Full dashboard (user has projects) ─────────────────────
 
-  // Compute stats
-  const totalCases = testCases.length;
-  const passedCases = testCases.filter((tc) => tc.status === "passed").length;
-  const failedCases = testCases.filter((tc) => tc.status === "failed").length;
+  // ─── 1 & 2. ALIGN PASSED/FAILED/TOTAL TO LATEST RUN ───
   const lastRun = runs[0];
-  const coveragePercent = totalCases > 0 ? Math.round((passedCases / totalCases) * 100) : 0;
-  const flakyCases = runs.reduce((count, run) => {
-    return count + run.results.filter((r) => r.status === "passed" && r.duration > 3000).length;
-  }, 0);
+  const globalTotalCases = testCases ? testCases.length : 0;
+  const passedCases = lastRun ? lastRun.results.filter((r) => r.status === "passed").length : 0;
+  const failedCases = lastRun ? lastRun.results.filter((r) => r.status === "failed").length : 0;
 
-  // Sparkline data: last 7 days of passed/failed counts
-  const sparklineData = (statusFilter: "passed" | "failed") => {
-    return Array.from({ length: 7 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (6 - i));
-      const dayRuns = runs.filter((r) => {
-        const runDate = new Date(r.startedAt);
-        return runDate.toDateString() === date.toDateString();
-      });
-      return dayRuns.reduce((s, r) => s + r.results.filter((x) => x.status === statusFilter).length, 0);
+  // ─── 3. DYNAMIC LAST RUN STATUS ───
+  const lastRunStatus = lastRun 
+    ? (lastRun.results.some((r) => r.status === "failed") ? "failed" : "passed")
+    : null;
+
+  // ─── 4. COVERAGE (Fake pass rate removed, nullified since no coverage tool) ───
+  const coveragePercent = null;
+
+  // ─── 5. FLAKY TESTS (COUNT DISTINCT test_id over last 10 runs) ───
+  // A flaky test is one that has both passed and failed in recent history.
+  const flakyTestIds = new Set<string>();
+  const testStatusHistory = new Map<string, Set<string>>();
+  
+  runs.slice(0, 10).forEach(run => {
+    run.results.forEach(r => {
+      if (!testStatusHistory.has(r.testCaseId)) {
+        testStatusHistory.set(r.testCaseId, new Set());
+      }
+      testStatusHistory.get(r.testCaseId)!.add(r.status);
+    });
+  });
+
+  testStatusHistory.forEach((statuses, testId) => {
+    if (statuses.has("passed") && statuses.has("failed")) {
+      flakyTestIds.add(testId);
+    }
+  });
+  const flakyCases = flakyTestIds.size;
+
+  // ─── 6. SPARKLINE GENERATORS ───
+  const last7Runs = [...runs].sort((a, b) => a.startedAt - b.startedAt).slice(-7);
+  const paddedRuns = Array.from({ length: 7 }, (_, i) => last7Runs[i - (7 - last7Runs.length)]);
+
+  const makeGenerator = (getValue: (run: any) => number | null) => () => {
+    return paddedRuns.map((r, i) => {
+      if (!r) return { value: null, label: `Run -${7 - i}` };
+      return { value: getValue(r), label: `#${r.id.replace("RUN-", "")}` };
     });
   };
+
+  const genTotalCases = makeGenerator(r => r.results.length);
+  const genPassed = makeGenerator(r => r.results.filter((x: any) => x.status === "passed").length);
+  const genFailed = makeGenerator(r => r.results.filter((x: any) => x.status === "failed").length);
+  const genLastRun = makeGenerator(r => Math.round(r.results.reduce((s: any, x: any) => s + x.duration, 0) / 1000));
+  const genCoverage = makeGenerator(r => null);
+  const genFlaky = makeGenerator(r => r.results.filter((x: any) => flakyTestIds.has(x.testCaseId)).length);
+
+  const isCasesZero = !testCases || testCases.length === 0;
 
   return (
     <div className="mx-auto max-w-7xl space-y-10">
       <Masthead />
 
+      <style>{`
+        @keyframes pulse-ring-border {
+          0% { box-shadow: 0 0 0 0 var(--c-border); }
+          100% { box-shadow: 0 0 0 6px transparent; }
+        }
+      `}</style>
+
       {/* Quick Actions Row */}
       <div className="flex flex-wrap gap-3 mt-6">
         <Link
           to="/generate"
-          className="inline-flex items-center gap-2 rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[16px] py-[8px] text-[13px] font-medium transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:border-[var(--c-accent)] hover:bg-[var(--c-accent-soft)] hover:text-[var(--c-accent)]"
+          className={`inline-flex items-center gap-2 rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[16px] py-[8px] text-[13px] font-medium transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:border-[var(--c-accent)] hover:bg-[var(--c-accent-soft)] hover:text-[var(--c-accent)] ${
+            isMounted && isCasesZero ? "animate-[pulse-ring-border_2.2s_infinite]" : ""
+          }`}
         >
           <Sparkles className="h-[14px] w-[14px]" /> Generate Tests
         </Link>
@@ -149,12 +260,29 @@ function Dashboard() {
 
       {/* Stats — 6 columns */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mt-6">
-        <StatCard label="Total test cases" value={totalCases} sub={`${suites.length} suite${suites.length !== 1 ? "s" : ""}`} icon={FileText} />
-        <StatCard label="Tests passed" value={passedCases} sub={totalCases > 0 ? `${Math.round((passedCases / totalCases) * 100)}% pass rate` : "No runs"} icon={CheckCircle2} sparkline={sparklineData("passed")} sparkColor="var(--c-accent)" />
-        <StatCard label="Tests failed" value={failedCases} sub={totalCases > 0 ? `${Math.round((failedCases / totalCases) * 100)}% fail rate` : "No runs"} icon={XCircle} alert={failedCases > 0} sparkline={sparklineData("failed")} sparkColor="var(--c-fail)" />
-        <StatCard label="Last run" value={0} displayValue={lastRun ? `#${lastRun.id.replace("RUN-", "")}` : "—"} sub={lastRun ? `Status: ${lastRun.status} · ${formatRelativeTime(lastRun.startedAt)}` : "Never run"} icon={Clock} />
-        <StatCard label="Coverage" value={coveragePercent} suffix="%" sub={`${projects.length} project${projects.length !== 1 ? "s" : ""}`} icon={ShieldAlert} />
-        <StatCard label="Flaky tests" value={flakyCases} sub="Slow pass (>3s)" icon={Zap} alert={flakyCases > 0} />
+        <StatCard 
+          label="Total test cases" 
+          value={globalTotalCases} 
+          sub={`${suites.length} suite${suites.length !== 1 ? "s" : ""}`} 
+          icon={FileText} 
+          sparklineGenerator={genTotalCases} 
+          sparkColor="var(--c-text-muted)"
+          nudge={
+            isMounted && isCasesZero ? (
+              <button 
+                onClick={() => navigate({ to: "/generate" })}
+                className="mt-[6px] block text-[12px] text-[var(--c-text-muted)] text-left hover:underline"
+              >
+                → Generate your first test
+              </button>
+            ) : null
+          }
+        />
+        <StatCard label="Tests passed" value={passedCases} sub={lastRun ? `${Math.round((passedCases / lastRun.results.length) * 100) || 0}% pass rate` : "No runs"} icon={CheckCircle2} sparklineGenerator={genPassed} sparkColor="var(--c-accent)" />
+        <StatCard label="Tests failed" value={failedCases} sub={lastRun ? `${Math.round((failedCases / lastRun.results.length) * 100) || 0}% fail rate` : "No runs"} icon={XCircle} alert={failedCases > 0} sparklineGenerator={genFailed} sparkColor="var(--c-fail)" />
+        <StatCard label="Last run" value={0} displayValue={lastRun ? `#${lastRun.id.replace("RUN-", "")}` : "—"} sub={lastRun ? `Status: ${lastRunStatus} · ${formatRelativeTime(lastRun.startedAt)}` : "Never run"} icon={Clock} sparklineGenerator={genLastRun} sparkColor="var(--c-text-muted)" />
+        <StatCard label="Coverage" value={0} displayValue="—" sub="No coverage data" icon={ShieldAlert} sparklineGenerator={genCoverage} sparkColor="var(--c-accent)" />
+        <StatCard label="Flaky tests" value={flakyCases} sub="Over last 10 runs" icon={Zap} alert={flakyCases > 0} sparklineGenerator={genFlaky} sparkColor="var(--c-warn)" />
       </section>
 
 
@@ -432,7 +560,7 @@ function Masthead() {
 }
 
 function StatCard({
-  label, value, displayValue, suffix = "", sub, icon: Icon, alert, sparkline, sparkColor,
+  label, value, displayValue, suffix = "", sub, icon: Icon, alert, sparklineGenerator, sparkColor, nudge,
 }: {
   label: string;
   value: number;
@@ -441,14 +569,25 @@ function StatCard({
   sub: string;
   icon: any;
   alert?: boolean;
-  sparkline?: number[];
+  sparklineGenerator?: () => { value: number | null; label: string }[];
   sparkColor?: string;
+  nudge?: React.ReactNode;
 }) {
   const animatedValue = useCountUp(value);
+  const [sparklineData, setSparklineData] = useState<{ value: number | null; label: string }[] | null>(null);
+
+  useEffect(() => {
+    if (sparklineGenerator) {
+      const timer = setTimeout(() => {
+        setSparklineData(sparklineGenerator());
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   return (
     <div
-      className="relative flex flex-col justify-between overflow-hidden rounded-[12px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-5 stagger-item transition-all duration-[var(--t-normal)] hover:-translate-y-[3px] hover:border-[var(--c-border-strong)] hover:shadow-[var(--shadow-sm)]"
+      className="group relative flex flex-col justify-between overflow-hidden rounded-[12px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-5 stagger-item transition-all duration-[var(--t-normal)] hover:-translate-y-[3px] hover:border-[var(--c-border-strong)] hover:shadow-[var(--shadow-sm)]"
     >
       <div>
         <div className="flex items-center justify-between">
@@ -459,12 +598,18 @@ function StatCard({
           <p className="font-display text-[30px] font-medium leading-none text-[var(--c-text)]">
             {displayValue ?? `${animatedValue}${suffix}`}
           </p>
-          {sparkline && sparkColor && (
-            <Sparkline data={sparkline} color={sparkColor} />
-          )}
         </div>
       </div>
       <p className="mt-3 font-mono text-[10.5px] text-[var(--c-text-muted)]">{sub}</p>
+      {nudge}
+
+      {sparklineGenerator && sparkColor && (
+        <div className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-[220ms] ease-in-out group-hover:grid-rows-[1fr]">
+          <div className="overflow-hidden">
+            <BarSparkline data={sparklineData} color={sparkColor} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

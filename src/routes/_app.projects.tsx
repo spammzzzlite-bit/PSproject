@@ -72,7 +72,7 @@ function ProjectsPage() {
           <p className="mt-2 max-w-md text-[14px] text-[var(--c-text-muted)]">
             Projects keep your test cases, files and runs together. Start with one — you can always add more.
           </p>
-          <button onClick={() => setShowNew(true)} className="mt-6 rounded-[8px] bg-[var(--c-text)] px-[20px] py-[10px] text-[14px] text-white transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:bg-[#2C2825] hover:shadow-[var(--shadow-md)]">
+          <button onClick={() => setShowNew(true)} className="mt-6 rounded-[8px] bg-[var(--c-text)] px-[20px] py-[10px] text-[14px] text-[var(--c-bg)] transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:opacity-90 hover:shadow-[var(--shadow-md)]">
             Create your first project
           </button>
         </div>
@@ -897,7 +897,7 @@ export function DetailedNewProjectModal({ open, onClose, onSuccess }: { open: bo
         </div>
         <div className="mt-6 flex justify-end gap-2 pt-2 border-t border-[var(--c-border)]">
           <button type="button" onClick={onClose} className="rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[16px] py-[8px] text-[13px] font-medium transition-all hover:bg-[var(--c-bg-hover)]">Cancel</button>
-          <button type="submit" className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-white hover:bg-[#2C2825]">Create Project</button>
+          <button type="submit" className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-[var(--c-bg)] hover:opacity-90">Create Project</button>
         </div>
       </form>
     </Modal>
@@ -1060,7 +1060,7 @@ function EditProjectModal({ project: p, onClose }: { project: Project; onClose: 
         </div>
         <div className="mt-6 flex justify-end gap-2 pt-2 border-t border-[var(--c-border)]">
           <button type="button" onClick={onClose} className="rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[16px] py-[8px] text-[13px] font-medium transition-all hover:bg-[var(--c-bg-hover)]">Cancel</button>
-          <button type="submit" className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-white hover:bg-[#2C2825]">Save changes</button>
+          <button type="submit" className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-[var(--c-bg)] hover:opacity-90">Save changes</button>
         </div>
       </form>
     </Modal>

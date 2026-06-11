@@ -49,7 +49,7 @@ function SuitesPage() {
         title="Test suites"
         subtitle="Folders for your test cases, grouped by project."
         action={
-          <button onClick={() => { setShowNew(true); setNewProjectId(projects[0]?.id || ""); }} className="rounded-full bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-white transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:bg-[#2C2825] hover:shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none" disabled={projects.length === 0}>
+          <button onClick={() => { setShowNew(true); setNewProjectId(projects[0]?.id || ""); }} className="rounded-full bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-[var(--c-bg)] transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:opacity-90 hover:shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none" disabled={projects.length === 0}>
             + New suite
           </button>
         }
@@ -119,7 +119,7 @@ function SuitesPage() {
             />
             <div className="mt-6 flex justify-end gap-2">
               <button type="button" onClick={() => setShowNew(false)} className="rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[16px] py-[8px] text-[13px] font-medium transition-all hover:bg-[var(--c-bg-hover)]">Cancel</button>
-              <button type="submit" className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-white transition-all hover:bg-[#2C2825]">Create suite</button>
+              <button type="submit" className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-[var(--c-bg)] transition-all hover:opacity-90">Create suite</button>
             </div>
           </form>
         </Modal>
@@ -356,7 +356,7 @@ function TestCasePanel({ testCase }: { testCase: TestCase }) {
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button onClick={handleSave} className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-white transition-all hover:bg-[#2C2825]">
+            <button onClick={handleSave} className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-[var(--c-bg)] transition-all hover:opacity-90">
               Save Changes
             </button>
             <button onClick={() => setEditing(false)} className="rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[16px] py-[8px] text-[13px] font-medium transition-all hover:bg-[var(--c-bg-hover)]">

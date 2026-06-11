@@ -576,7 +576,7 @@ function AppShell() {
                 setPlan("Premium");
                 toast.success("Successfully upgraded to Premium Plan! Tokens refilled.");
               }}
-              className="mt-8 w-full rounded-[8px] bg-[var(--c-text)] px-5 py-3 text-[14px] font-medium text-white transition-all hover:-translate-y-[1px] hover:bg-[#2C2825] hover:shadow-[var(--shadow-md)]"
+              className="mt-8 w-full rounded-[8px] bg-[var(--c-text)] px-5 py-3 text-[14px] font-medium text-[var(--c-bg)] transition-all hover:-translate-y-[1px] hover:opacity-90 hover:shadow-[var(--shadow-md)]"
             >
               Upgrade to Premium
             </button>

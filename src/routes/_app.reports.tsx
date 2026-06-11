@@ -175,7 +175,7 @@ function ReportsPage() {
             </p>
             <button
               onClick={exportExecutiveSummary}
-              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-white hover:bg-[#2C2825]"
+              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90"
             >
               <Download className="h-3.5 w-3.5" /> Export PDF
             </button>
@@ -192,7 +192,7 @@ function ReportsPage() {
             </p>
             <button
               onClick={exportSprintBurndown}
-              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-white hover:bg-[#2C2825]"
+              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90"
             >
               <Download className="h-3.5 w-3.5" /> Export PDF
             </button>
@@ -209,7 +209,7 @@ function ReportsPage() {
             </p>
             <button
               onClick={exportTestCoverage}
-              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-white hover:bg-[#2C2825]"
+              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90"
             >
               <Download className="h-3.5 w-3.5" /> Export CSV
             </button>
@@ -226,7 +226,7 @@ function ReportsPage() {
             </p>
             <button
               onClick={exportActivityAuditLog}
-              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-white hover:bg-[#2C2825]"
+              className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90"
             >
               <Download className="h-3.5 w-3.5" /> Export CSV
             </button>

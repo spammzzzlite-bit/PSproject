@@ -138,7 +138,7 @@ function RegressionPage() {
           <button
             onClick={handleRunFocused}
             disabled={!selectedProjectId}
-            className="rounded-[8px] bg-[var(--c-text)] px-[20px] py-[10px] text-[13px] font-medium text-white transition-all hover:-translate-y-[1px] hover:bg-[#2C2825]"
+            className="rounded-[8px] bg-[var(--c-text)] px-[20px] py-[10px] text-[13px] font-medium text-[var(--c-bg)] transition-all hover:-translate-y-[1px] hover:opacity-90"
           >
             Run Regression
           </button>
@@ -313,7 +313,7 @@ function NewRegressionModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[16px] py-[8px] text-[13px] font-medium transition-all hover:bg-[var(--c-bg-hover)]">Cancel</button>
-          <button type="submit" disabled={!name.trim() || selectedCases.size === 0} className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-white transition-all hover:-translate-y-[1px] hover:bg-[#2C2825] disabled:opacity-40">
+          <button type="submit" disabled={!name.trim() || selectedCases.size === 0} className="rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[13px] font-medium text-[var(--c-bg)] transition-all hover:-translate-y-[1px] hover:opacity-90 disabled:opacity-40">
             Create suite
           </button>
         </div>

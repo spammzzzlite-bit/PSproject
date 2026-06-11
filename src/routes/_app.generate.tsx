@@ -370,7 +370,7 @@ ${systemLogs}`;
             <button
               onClick={generate}
               disabled={!hasInput()}
-              className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--c-text)] px-[24px] py-[12px] text-[14px] font-medium text-white transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:bg-[#2C2825] hover:shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+              className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--c-text)] px-[24px] py-[12px] text-[14px] font-medium text-[var(--c-bg)] transition-all duration-[var(--t-normal)] hover:-translate-y-[1px] hover:opacity-90 hover:shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
               Generate test cases
             </button>
@@ -554,7 +554,7 @@ function GeneratedCaseRow({
             />
           </div>
           <div className="flex gap-2 justify-end border-t border-[var(--c-border)] pt-4">
-            <button onClick={onEditSave} className="inline-flex items-center gap-1.5 rounded-[8px] bg-[var(--c-text)] px-[14px] py-[8px] text-[12px] font-medium text-white transition-all hover:bg-[#2C2825]">
+            <button onClick={onEditSave} className="inline-flex items-center gap-1.5 rounded-[8px] bg-[var(--c-text)] px-[14px] py-[8px] text-[12px] font-medium text-[var(--c-bg)] transition-all hover:opacity-90">
               <Check className="h-3 w-3" /> Save
             </button>
             <button onClick={onEditCancel} className="rounded-[8px] border-[1.5px] border-[var(--c-border)] bg-transparent px-[14px] py-[8px] text-[12px] font-medium transition-all hover:border-[var(--c-border-strong)]">
@@ -650,7 +650,7 @@ function GeneratedCaseRow({
                   onSaveToSuite(saveSuiteId);
                 }}
                 disabled={isSaved}
-                className="inline-flex items-center gap-1.5 rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[12px] font-medium text-white transition-all hover:bg-[#2C2825] disabled:bg-[var(--c-border)] disabled:text-[var(--c-text-muted)] disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1.5 rounded-[8px] bg-[var(--c-text)] px-[16px] py-[8px] text-[12px] font-medium text-[var(--c-bg)] transition-all hover:opacity-90 disabled:bg-[var(--c-border)] disabled:text-[var(--c-text-muted)] disabled:cursor-not-allowed"
               >
                 {isSaved ? "✓ Saved" : "Save to Suite"}
               </button>
@@ -715,7 +715,7 @@ function SaveToProjectPanel({
                   toast.success("Project created inline!");
                 }
               }}
-              className="rounded-[6px] bg-[var(--c-text)] px-3 text-[12px] text-white hover:bg-[#2C2825]"
+              className="rounded-[6px] bg-[var(--c-text)] px-3 text-[12px] text-[var(--c-bg)] hover:opacity-90"
             >
               Create
             </button>
@@ -758,7 +758,7 @@ function SaveToProjectPanel({
                     toast.success("Suite created inline!");
                   }
                 }}
-                className="rounded-[6px] bg-[var(--c-text)] px-3 text-[12px] text-white hover:bg-[#2C2825]"
+                className="rounded-[6px] bg-[var(--c-text)] px-3 text-[12px] text-[var(--c-bg)] hover:opacity-90"
               >
                 Create
               </button>
