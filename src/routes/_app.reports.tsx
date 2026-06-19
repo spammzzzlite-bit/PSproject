@@ -19,6 +19,7 @@ import {
   useActivity,
   useSuites,
   deductTokenAction,
+  useSprints,
 } from "@/frontend/store/store";
 import { toast } from "./_app";
 
@@ -35,14 +36,11 @@ function ReportsPage() {
   const [activity] = useActivity();
   const [suites] = useSuites();
 
+  const [sprints] = useSprints();
+
   // Compute summary values
   const totalProjects = projects.length;
-  const completedProjects = projects.filter(
-    (p) => p.status === "completed" || p.remainingStoryPoints === 0,
-  ).length;
-  const totalStoryPoints = projects.reduce((sum, p) => sum + (p.totalStoryPoints || 0), 0);
-  const remainingStoryPoints = projects.reduce((sum, p) => sum + (p.remainingStoryPoints || 0), 0);
-  const storyPointsDone = totalStoryPoints - remainingStoryPoints;
+  const completedProjects = projects.filter((p) => p.status === "completed").length;
 
   // Helper for initiating downloads
   function downloadFile(filename: string, content: string, mimeType: string) {
@@ -82,16 +80,9 @@ function ReportsPage() {
       `--------------------------------------------------\n` +
       projects
         .map((p) => {
-          const pct =
-            p.totalStoryPoints > 0
-              ? Math.round(
-                  ((p.totalStoryPoints - p.remainingStoryPoints) / p.totalStoryPoints) * 100,
-                )
-              : 0;
           return (
             `* ${p.name}\n` +
             `  Status: ${p.status.toUpperCase()} | Priority: ${p.priority.toUpperCase()}\n` +
-            `  Story Points Completed: ${p.totalStoryPoints - p.remainingStoryPoints} of ${p.totalStoryPoints} (${pct}%)\n` +
             `  Schedule: ${p.startDate} to ${p.targetDate}`
           );
         })
@@ -101,37 +92,39 @@ function ReportsPage() {
     toast.success("Executive Summary report downloaded.");
   }
 
-  function exportSprintBurndown() {
-    if (!checkAndDeduct("Sprint Burndown Report")) return;
+  function exportSprintSchedules() {
+    if (!checkAndDeduct("Sprint Schedules Report")) return;
 
     const content =
-      `QAMind AI — SPRINT BURNDOWN REPORT\n` +
+      `QAMind AI — SPRINT SCHEDULES REPORT\n` +
       `Generated: ${new Date().toLocaleString()}\n` +
       `==================================================\n\n` +
-      `BURNDOWN OVERVIEW:\n` +
-      `- Total Story Points Committed: ${totalStoryPoints} pts\n` +
-      `- Completed Story Points: ${storyPointsDone} pts\n` +
-      `- Remaining Story Points: ${remainingStoryPoints} pts\n` +
-      `- Sprint Completion Velocity: ${totalStoryPoints > 0 ? Math.round((storyPointsDone / totalStoryPoints) * 100) : 0}%\n\n` +
-      `PROJECT BURN HISTORIES:\n` +
+      `PROJECT SPRINT CYCLES:\n` +
       `--------------------------------------------------\n` +
       projects
         .map((p) => {
-          const completed = p.totalStoryPoints - p.remainingStoryPoints;
-          const progressLines = Array.from({ length: p.totalStoryPoints }, (_, i) => {
-            return i < completed ? "█" : "░";
-          }).join("");
-          return (
-            `* ${p.name}\n` +
-            `  Progress Chart: [${progressLines}] (${completed}/${p.totalStoryPoints} pts completed)\n` +
-            `  Remaining Points: ${p.remainingStoryPoints} pts\n` +
-            `  Target Date: ${p.targetDate}`
-          );
+          const pSprints = sprints
+            .filter((s) => s.projectId === p.id)
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+          const sprintLines = pSprints
+            .map((s) => {
+              const startD = s.startDate ? new Date(s.startDate) : null;
+              const endD = s.endDate ? new Date(s.endDate) : null;
+              const duration =
+                startD && endD
+                  ? Math.max(1, Math.ceil((endD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+                  : 0;
+              return `  - ${s.name}: ${s.status} (${s.startDate} to ${s.endDate}, ${duration} days)`;
+            })
+            .join("\n");
+
+          return `* ${p.name} (${p.status.toUpperCase()})\n` + (sprintLines || "  No sprints scheduled.");
         })
         .join("\n\n");
 
-    downloadFile("sprint-burndown-report.pdf", content, "text/plain");
-    toast.success("Sprint Burndown report downloaded.");
+    downloadFile("sprint-schedules-report.pdf", content, "text/plain");
+    toast.success("Sprint Schedules report downloaded.");
   }
 
   function exportTestCoverage() {
@@ -189,20 +182,20 @@ function ReportsPage() {
         </div>
         <div className="rounded-[12px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-5 transition-all duration-[var(--t-normal)] hover:-translate-y-[2px] hover:shadow-[var(--shadow-sm)]">
           <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
-            Story Points Done
+            Test Suites
           </p>
-          <p className="mt-4 font-display text-4xl text-[var(--c-text)]">{storyPointsDone}</p>
+          <p className="mt-4 font-display text-4xl text-[var(--c-text)]">{suites.length}</p>
           <p className="mt-2 font-mono text-[11px] text-[var(--c-text-muted)]">
-            Out of {totalStoryPoints} committed
+            Organized test collections
           </p>
         </div>
         <div className="rounded-[12px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-5 transition-all duration-[var(--t-normal)] hover:-translate-y-[2px] hover:shadow-[var(--shadow-sm)]">
           <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
-            Total Points
+            Test Cases
           </p>
-          <p className="mt-4 font-display text-4xl text-[var(--c-text)]">{totalStoryPoints}</p>
+          <p className="mt-4 font-display text-4xl text-[var(--c-text)]">{cases.length}</p>
           <p className="mt-2 font-mono text-[11px] text-[var(--c-text-muted)]">
-            Sprint velocity capacity
+            Drafted validation checks
           </p>
         </div>
       </div>
@@ -230,20 +223,19 @@ function ReportsPage() {
             </button>
           </div>
 
-          {/* Card 2: Sprint Burndown */}
+          {/* Card 2: Sprint Schedules */}
           <div className="flex flex-col rounded-[12px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-6 transition-all duration-[var(--t-normal)] hover:-translate-y-[2px] hover:shadow-[var(--shadow-md)]">
             <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[var(--c-bg-hover)] text-[var(--c-accent)] mb-4">
               <Clock className="h-5 w-5" />
             </div>
             <h4 className="font-display text-[20px] text-[var(--c-text)] leading-tight">
-              Sprint Burndown
+              Sprint Schedules
             </h4>
             <p className="mt-2 text-[13px] text-[var(--c-text-muted)] flex-1 leading-relaxed">
-              Analysis of committed story points, completed items, velocity rates, and sprint
-              completion charts.
+              Overall sprint cycles, durations, status, dates, and team allocation metrics.
             </p>
             <button
-              onClick={exportSprintBurndown}
+              onClick={exportSprintSchedules}
               className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[8px] bg-[var(--c-text)] py-2 text-[12px] font-medium text-[var(--c-bg)] hover:opacity-90"
             >
               <Download className="h-3.5 w-3.5" /> Export PDF
@@ -307,16 +299,14 @@ function ReportsPage() {
                   <th className="px-6 py-4">Project Name</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Priority</th>
-                  <th className="px-6 py-4">Total Pts</th>
-                  <th className="px-6 py-4">Remaining</th>
-                  <th className="px-6 py-4">Completion %</th>
+                  <th className="px-6 py-4">Start Date</th>
+                  <th className="px-6 py-4">Target Date</th>
+                  <th className="px-6 py-4">Test Suites</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--c-border)]">
                 {projects.map((p) => {
-                  const completed = (p.totalStoryPoints || 0) - (p.remainingStoryPoints || 0);
-                  const completionPercent =
-                    p.totalStoryPoints > 0 ? Math.round((completed / p.totalStoryPoints) * 100) : 0;
+                  const suitesCount = suites.filter((s) => s.projectId === p.id).length;
                   return (
                     <tr
                       key={p.id}
@@ -346,21 +336,9 @@ function ReportsPage() {
                           {p.priority}
                         </span>
                       </td>
-                      <td className="px-6 py-4 font-mono font-medium">{p.totalStoryPoints}</td>
-                      <td className="px-6 py-4 font-mono font-medium">{p.remainingStoryPoints}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-[6px] w-24 bg-[var(--c-bg-hover)] rounded-full overflow-hidden border border-[var(--c-border)] shrink-0">
-                            <div
-                              className="h-full bg-[var(--c-accent)] rounded-full transition-all duration-[var(--t-slow)]"
-                              style={{ width: `${completionPercent}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-[11px] font-semibold">
-                            {completionPercent}%
-                          </span>
-                        </div>
-                      </td>
+                      <td className="px-6 py-4 font-mono font-medium">{p.startDate || "N/A"}</td>
+                      <td className="px-6 py-4 font-mono font-medium">{p.targetDate || "N/A"}</td>
+                      <td className="px-6 py-4 font-mono font-semibold text-[var(--c-accent)]">{suitesCount}</td>
                     </tr>
                   );
                 })}

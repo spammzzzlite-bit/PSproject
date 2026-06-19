@@ -175,10 +175,6 @@ function ProjectCard({
   const [suites] = useSuites();
   const projectSuites = suites.filter((s) => s.projectId === p.id);
 
-  const completedPoints = (p.totalStoryPoints || 0) - (p.remainingStoryPoints || 0);
-  const completionPct =
-    p.totalStoryPoints > 0 ? Math.round((completedPoints / p.totalStoryPoints) * 100) : 0;
-
   return (
     <div
       className="stagger-item group relative flex flex-col items-start rounded-[12px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-6 text-left transition-all duration-[var(--t-normal)] hover:-translate-y-[3px] hover:border-[var(--c-border-strong)] hover:shadow-[var(--shadow-md)]"
@@ -215,20 +211,10 @@ function ProjectCard({
         </p>
       </Link>
 
-      {/* Progress Bar & Story Points */}
-      <div className="mt-4 w-full space-y-1.5">
-        <div className="flex justify-between text-[11px] font-mono text-[var(--c-text-muted)]">
-          <span>
-            Points: {completedPoints} / {p.totalStoryPoints || 0} completed
-          </span>
-          <span>{completionPct}%</span>
-        </div>
-        <div className="h-[6px] w-full bg-[var(--c-bg-hover)] rounded-full overflow-hidden border border-[var(--c-border)]">
-          <div
-            className="h-full bg-[var(--c-accent)] rounded-full transition-all duration-[var(--t-slow)]"
-            style={{ width: `${completionPct}%` }}
-          />
-        </div>
+      {/* Project Info */}
+      <div className="mt-4 w-full flex items-center justify-between text-[11px] font-mono text-[var(--c-text-muted)] border-t border-[var(--c-border)]/30 pt-3">
+        <span>Suites: {projectSuites.length}</span>
+        <span>Files: {p.files.length}</span>
       </div>
 
       {/* Dates & Tags */}
@@ -314,9 +300,7 @@ export function ProjectDetail({ project }: { project: Project }) {
     );
   }
 
-  const totalPoints = p.totalStoryPoints || 10;
-  const completedPoints = Math.max(0, totalPoints - (p.remainingStoryPoints || 0));
-  const remainingPoints = p.remainingStoryPoints || 0;
+
 
   const [storeSprints] = useSprints();
 
@@ -343,7 +327,6 @@ export function ProjectDetail({ project }: { project: Project }) {
   const [editStatus, setEditStatus] = useState<"Upcoming" | "Active" | "Completed">("Upcoming");
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
-  const [editPoints, setEditPoints] = useState(0);
   const [editGoal, setEditGoal] = useState("");
   const [editLead, setEditLead] = useState<string | null>(null);
   const [editMembers, setEditMembers] = useState<string[]>([]);
@@ -356,7 +339,6 @@ export function ProjectDetail({ project }: { project: Project }) {
       setEditStatus(selectedSprint.status);
       setEditStart(selectedSprint.startDate);
       setEditEnd(selectedSprint.endDate);
-      setEditPoints(selectedSprint.storyPointsAllocated);
       setEditGoal(selectedSprint.goalDescription || "");
       setEditLead(selectedSprint.sprintLeadId);
       setEditMembers(selectedSprint.sprintMembers || []);
@@ -390,10 +372,6 @@ export function ProjectDetail({ project }: { project: Project }) {
       toast.error("End date cannot be before start date.");
       return;
     }
-    if (editPoints < 0) {
-      toast.error("Story points cannot be negative.");
-      return;
-    }
 
     const updatedSprint: Sprint = {
       ...selectedSprint,
@@ -401,7 +379,6 @@ export function ProjectDetail({ project }: { project: Project }) {
       status: editStatus,
       startDate: editStart,
       endDate: editEnd,
-      storyPointsAllocated: Number(editPoints),
       goalDescription: editGoal.trim() || null,
       sprintLeadId: editLead,
       sprintMembers: editMembers,
@@ -410,10 +387,6 @@ export function ProjectDetail({ project }: { project: Project }) {
     };
 
     const otherSprints = dbSprints.filter((s) => s.id !== selectedSprint.id);
-    const totalAllocated =
-      otherSprints.reduce((sum, s) => sum + s.storyPointsAllocated, 0) + Number(editPoints);
-    const masterPoints = p.totalStoryPoints || 10;
-
     const newSprints = [...otherSprints, updatedSprint];
 
     updateLocalSprints(p.id, newSprints);
@@ -424,11 +397,6 @@ export function ProjectDetail({ project }: { project: Project }) {
       const res = await bulkUpsertSprintsToSupabase(p.id, newSprints);
       if (res.success) {
         toast.success("Sprint saved successfully", { id: saveToast });
-        if (totalAllocated !== masterPoints) {
-          toast.info(
-            `Note: Total allocated sprint points (${totalAllocated}) differ from master project story points (${masterPoints}).`,
-          );
-        }
       } else {
         toast.error("Failed to save to database. Preserved in local session.", { id: saveToast });
       }
@@ -486,67 +454,6 @@ export function ProjectDetail({ project }: { project: Project }) {
     }
   };
 
-  const spr1Points = Math.round(completedPoints * 0.4);
-  const spr2Points = Math.round(completedPoints * 0.4);
-  const spr3Points = completedPoints - (spr1Points + spr2Points);
-  const spr4Points = remainingPoints;
-
-  const sprints =
-    dbSprints.length > 0
-      ? dbSprints.map((s) => ({
-          id: s.id,
-          name: s.name,
-          points: s.storyPointsAllocated,
-          status: (s.status === "Upcoming"
-            ? "future"
-            : s.status === "Active"
-              ? "active"
-              : "completed") as "completed" | "active" | "future",
-        }))
-      : [
-          { id: "s1", name: "Sprint 1", points: spr1Points, status: "completed" as const },
-          { id: "s2", name: "Sprint 2", points: spr2Points, status: "completed" as const },
-          {
-            id: "s3",
-            name: "Sprint 3",
-            points: spr3Points,
-            status: p.status === "completed" ? ("completed" as const) : ("active" as const),
-          },
-          {
-            id: "s4",
-            name: "Sprint 4",
-            points: spr4Points,
-            status: p.status === "completed" ? ("completed" as const) : ("future" as const),
-          },
-        ];
-
-  const completedSprintsCount = sprints.filter((s) => s.status === "completed").length;
-  const velocity =
-    completedSprintsCount > 0
-      ? (
-          sprints.filter((s) => s.status === "completed").reduce((sum, s) => sum + s.points, 0) /
-          completedSprintsCount
-        ).toFixed(1)
-      : "0.0";
-
-  const getX = (index: number) => 40 + index * (260 / Math.max(1, sprints.length));
-  const getY = (val: number) => 20 + ((totalPoints - val) / (totalPoints || 1)) * 120;
-
-  const actualPoints: { x: number; y: number }[] = [];
-  let currentPoints = totalPoints;
-  actualPoints.push({ x: getX(0), y: getY(currentPoints) });
-
-  sprints.forEach((s, idx) => {
-    if (s.status === "completed" || s.status === "active") {
-      currentPoints = Math.max(0, currentPoints - s.points);
-      actualPoints.push({ x: getX(idx + 1), y: getY(currentPoints) });
-    }
-  });
-
-  const actualPath = actualPoints
-    .map((pt, i) => `${i === 0 ? "M" : "L"} ${pt.x} ${pt.y}`)
-    .join(" ");
-
   return (
     <div className="space-y-6">
       {/* Project header */}
@@ -579,175 +486,11 @@ export function ProjectDetail({ project }: { project: Project }) {
       </div>
       <input ref={fileInput} type="file" multiple hidden onChange={onPick} />
 
-      {/* Project Metrics Section */}
-      <div className="space-y-6 border-t border-[var(--c-border)] pt-5">
-        <h3 className="font-display text-[20px] text-[var(--c-text)]">Project Metrics</h3>
-
-        {/* Story Points & Velocity Cards */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-4">
-            <p className="font-mono text-[9px] uppercase tracking-wider text-[var(--c-text-muted)]">
-              Story Points
-            </p>
-            <p className="mt-1 font-display text-[22px] font-semibold text-[var(--c-text)] leading-none">
-              {completedPoints}{" "}
-              <span className="text-[11px] font-normal text-[var(--c-text-muted)]">
-                / {totalPoints} completed
-              </span>
-            </p>
-          </div>
-          <div className="rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-4">
-            <p className="font-mono text-[9px] uppercase tracking-wider text-[var(--c-text-muted)]">
-              Velocity
-            </p>
-            <p className="mt-1 font-display text-[22px] font-semibold text-[var(--c-text)] leading-none">
-              {velocity}{" "}
-              <span className="text-[11px] font-normal text-[var(--c-text-muted)]">pts/spr</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Burndown Chart */}
-        <div className="rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-4">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--c-text-muted)] mb-3">
-            Burndown Chart
-          </p>
-          <div className="flex justify-center">
-            <svg viewBox="0 0 320 160" className="w-full h-[150px]">
-              {/* Grid lines */}
-              <line
-                x1="40"
-                y1="20"
-                x2="300"
-                y2="20"
-                stroke="var(--c-border)"
-                strokeWidth="0.5"
-                strokeDasharray="3"
-              />
-              <line
-                x1="40"
-                y1="60"
-                x2="300"
-                y2="60"
-                stroke="var(--c-border)"
-                strokeWidth="0.5"
-                strokeDasharray="3"
-              />
-              <line
-                x1="40"
-                y1="100"
-                x2="300"
-                y2="100"
-                stroke="var(--c-border)"
-                strokeWidth="0.5"
-                strokeDasharray="3"
-              />
-              <line x1="40" y1="140" x2="300" y2="140" stroke="var(--c-border)" strokeWidth="1" />
-
-              {/* Vertical lines */}
-              <line x1="40" y1="20" x2="40" y2="140" stroke="var(--c-border)" strokeWidth="1" />
-              {sprints.map((_, idx) => (
-                <line
-                  key={`v-${idx}`}
-                  x1={getX(idx + 1)}
-                  y1="20"
-                  x2={getX(idx + 1)}
-                  y2="140"
-                  stroke="var(--c-border)"
-                  strokeWidth="0.5"
-                  strokeDasharray="3"
-                />
-              ))}
-
-              {/* Ideal Line */}
-              <line
-                x1={getX(0)}
-                y1={getY(totalPoints)}
-                x2={getX(sprints.length)}
-                y2={getY(0)}
-                stroke="var(--c-text-dim)"
-                strokeWidth="1.2"
-                strokeDasharray="4"
-              />
-
-              {/* Actual Line */}
-              <path
-                d={actualPath}
-                fill="none"
-                stroke="var(--c-accent)"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-
-              {/* Actual points */}
-              {actualPoints.map((pt, index) => (
-                <circle key={index} cx={pt.x} cy={pt.y} r="3.5" fill="var(--c-accent)" />
-              ))}
-
-              {/* Labels */}
-              <text
-                x="35"
-                y="24"
-                className="font-mono text-[9px] fill-[var(--c-text-muted)] text-right"
-                textAnchor="end"
-              >
-                {totalPoints}
-              </text>
-              <text
-                x="35"
-                y="80"
-                className="font-mono text-[9px] fill-[var(--c-text-muted)] text-right"
-                textAnchor="end"
-              >
-                {Math.round(totalPoints / 2)}
-              </text>
-              <text
-                x="35"
-                y="144"
-                className="font-mono text-[9px] fill-[var(--c-text-muted)] text-right"
-                textAnchor="end"
-              >
-                0
-              </text>
-
-              {sprints.map((s, idx) => (
-                <text
-                  key={s.id}
-                  x={getX(idx)}
-                  y="155"
-                  className="font-mono text-[9px] fill-[var(--c-text-muted)]"
-                  textAnchor="middle"
-                >
-                  S{idx + 1}
-                </text>
-              ))}
-              <text
-                x={getX(sprints.length)}
-                y="155"
-                className="font-mono text-[9px] fill-[var(--c-text-muted)]"
-                textAnchor="middle"
-              >
-                End
-              </text>
-            </svg>
-          </div>
-          <div className="flex items-center justify-between mt-2.5 font-mono text-[9px] text-[var(--c-text-muted)]">
-            <span className="flex items-center gap-1.5">
-              <span className="h-0.5 w-3 bg-[var(--c-accent)] inline-block"></span>Actual Burndown
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-0.5 w-3 bg-[var(--c-text-dim)] border-dashed border-t inline-block"></span>
-              Ideal Path
-            </span>
-          </div>
-        </div>
-
-        {/* Sprints list */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--c-text-muted)]">
-              Sprints Tracker
+      {/* Sprints list */}
+      <div className="space-y-2 border-t border-[var(--c-border)] pt-5">
+        <div className="flex items-center justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--c-text-muted)]">
+            Sprints Tracker
             </p>
             <button
               onClick={() => setShowNewSprint(true)}
@@ -803,9 +546,6 @@ export function ProjectDetail({ project }: { project: Project }) {
                     </div>
 
                     <div className="flex items-center gap-2 font-mono text-[10.5px]">
-                      <span className="font-bold text-[var(--c-text)]">
-                        {s.storyPointsAllocated} pts
-                      </span>
                       <span
                         className={`rounded-sm px-1.5 py-0.2 uppercase text-[9px] font-semibold
                         ${
@@ -861,7 +601,6 @@ export function ProjectDetail({ project }: { project: Project }) {
             })}
           </div>
         </div>
-      </div>
 
       {/* Files */}
       {p.files.length > 0 && (
@@ -988,27 +727,13 @@ export function ProjectDetail({ project }: { project: Project }) {
                 </div>
               </div>
 
-              {/* Duration & Points */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--c-text-muted)]">
-                    Duration
-                  </label>
-                  <div className="w-full rounded-[6px] border border-[var(--c-border)] bg-[var(--c-bg-hover)] px-3 py-2 text-[13px] font-mono text-[var(--c-text-muted)]">
-                    {getEditingDuration()} days
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--c-text-muted)]">
-                    Story Points
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editPoints}
-                    onChange={(e) => setEditPoints(Number(e.target.value))}
-                    className="w-full rounded-[6px] border border-[var(--c-border)] bg-[var(--c-bg-card)] px-3 py-2 text-[13px] text-[var(--c-text)] focus:border-[var(--c-accent)] focus:outline-none"
-                  />
+              {/* Duration */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--c-text-muted)]">
+                  Duration
+                </label>
+                <div className="w-full rounded-[6px] border border-[var(--c-border)] bg-[var(--c-bg-hover)] px-3 py-2 text-[13px] font-mono text-[var(--c-text-muted)]">
+                  {getEditingDuration()} days
                 </div>
               </div>
 
@@ -1612,8 +1337,6 @@ export function DetailedNewProjectModal({
   const [desc, setDesc] = useState("");
   const [status, setStatus] = useState("planning"); // default to planning / Not Started
   const [priority, setPriority] = useState("medium"); // default to medium
-  const [totalPts, setTotalPts] = useState(0);
-  const [remPts, setRemPts] = useState(0);
   const [start, setStart] = useState("");
   const [target, setTarget] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -1625,7 +1348,6 @@ export function DetailedNewProjectModal({
   const dd = String(today.getDate()).padStart(2, "0");
   const todayStr = `${yyyy}-${mm}-${dd}`;
 
-  const showPointsWarning = totalPts <= 0 || remPts <= 0;
   const showStartWarning = start !== "" && start < todayStr;
   const showTargetWarning = target !== "" && start !== "" && target <= start;
 
@@ -1635,8 +1357,6 @@ export function DetailedNewProjectModal({
     priority !== "" &&
     start !== "" &&
     target !== "" &&
-    totalPts > 0 &&
-    remPts > 0 &&
     !showStartWarning &&
     !showTargetWarning;
 
@@ -1665,8 +1385,6 @@ export function DetailedNewProjectModal({
       description: desc.trim() || "No project description provided.",
       status: status as any,
       priority: priority as any,
-      totalStoryPoints: Number(totalPts),
-      remainingStoryPoints: Number(remPts),
       startDate: start,
       targetDate: target,
       tags: tags.length > 0 ? tags : [],
@@ -1675,8 +1393,6 @@ export function DetailedNewProjectModal({
     setDesc("");
     setStatus("planning");
     setPriority("medium");
-    setTotalPts(0);
-    setRemPts(0);
     setStart("");
     setTarget("");
     setTags([]);
@@ -1745,37 +1461,6 @@ export function DetailedNewProjectModal({
             </select>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-              Total Story Points <span className="text-[var(--c-fail)]">*</span>
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={totalPts || ""}
-              onChange={(e) => setTotalPts(e.target.value === "" ? 0 : Number(e.target.value))}
-              className="w-full rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-[10px] text-[13px] outline-none focus:border-[var(--c-accent)]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-              Remaining Points <span className="text-[var(--c-fail)]">*</span>
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={remPts || ""}
-              onChange={(e) => setRemPts(e.target.value === "" ? 0 : Number(e.target.value))}
-              className="w-full rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-[10px] text-[13px] outline-none focus:border-[var(--c-accent)]"
-            />
-          </div>
-        </div>
-        {showPointsWarning && (
-          <p className="text-[11.5px] text-[var(--c-fail)] font-semibold mt-0.5">
-            Total and remaining story points must be greater than 0.
-          </p>
-        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
@@ -1886,8 +1571,6 @@ function EditProjectModal({ project: p, onClose }: { project: Project; onClose: 
   const [desc, setDesc] = useState(p.description || "");
   const [status, setStatus] = useState(p.status || "active");
   const [priority, setPriority] = useState(p.priority || "medium");
-  const [totalPts, setTotalPts] = useState(p.totalStoryPoints || 0);
-  const [remPts, setRemPts] = useState(p.remainingStoryPoints || 0);
   const [start, setStart] = useState(p.startDate || "");
   const [target, setTarget] = useState(p.targetDate || "");
   const [tagsInput, setTagsInput] = useState(p.tags?.join(", ") || "");
@@ -1909,8 +1592,6 @@ function EditProjectModal({ project: p, onClose }: { project: Project; onClose: 
       (p.description || "") === desc.trim() &&
       p.status === status &&
       p.priority === priority &&
-      Number(p.totalStoryPoints || 0) === Number(totalPts) &&
-      Number(p.remainingStoryPoints || 0) === Number(remPts) &&
       (p.startDate || "") === start &&
       (p.targetDate || "") === target &&
       !tagsChanged;
@@ -1931,8 +1612,6 @@ function EditProjectModal({ project: p, onClose }: { project: Project; onClose: 
       description: desc.trim(),
       status: status as any,
       priority: priority as any,
-      totalStoryPoints: Number(totalPts),
-      remainingStoryPoints: Number(remPts),
       startDate: start,
       targetDate: target,
       tags: newTags,
@@ -1995,30 +1674,6 @@ function EditProjectModal({ project: p, onClose }: { project: Project; onClose: 
               <option value="medium">Medium</option>
               <option value="low">Low</option>
             </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-              Total Points
-            </label>
-            <input
-              type="number"
-              value={totalPts}
-              onChange={(e) => setTotalPts(Number(e.target.value))}
-              className="w-full rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-[10px] text-[13px] outline-none focus:border-[var(--c-accent)]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-              Remaining Points
-            </label>
-            <input
-              type="number"
-              value={remPts}
-              onChange={(e) => setRemPts(Number(e.target.value))}
-              className="w-full rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-[10px] text-[13px] outline-none focus:border-[var(--c-accent)]"
-            />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -2119,7 +1774,6 @@ export function NewSprintModal({
 
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
-  const [points, setPoints] = useState(0);
   const [goal, setGoal] = useState("");
   const [lead, setLead] = useState<string | null>(null);
   const [members, setMembers] = useState<string[]>([]);
@@ -2154,7 +1808,6 @@ export function NewSprintModal({
 
       setStart(dfStart);
       setEnd(dfEnd);
-      setPoints(0);
       setGoal("");
       setLead(null);
       setMembers([]);
@@ -2185,10 +1838,6 @@ export function NewSprintModal({
       toast.error("End date cannot be before start date.");
       return;
     }
-    if (points < 0) {
-      toast.error("Story points cannot be negative.");
-      return;
-    }
 
     const newSprint: Sprint = {
       id: crypto.randomUUID(),
@@ -2197,7 +1846,6 @@ export function NewSprintModal({
       status,
       startDate: start,
       endDate: end,
-      storyPointsAllocated: Number(points),
       goalDescription: goal.trim() || null,
       sprintLeadId: lead,
       sprintMembers: members,
@@ -2272,27 +1920,13 @@ export function NewSprintModal({
           </div>
         </div>
 
-        {/* Duration & Points */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-              Duration
-            </label>
-            <div className="w-full rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-hover)] p-[10px] text-[13px] font-mono text-[var(--c-text-muted)]">
-              {getDuration()} days
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-              Story Points
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={points}
-              onChange={(e) => setPoints(Number(e.target.value))}
-              className="w-full rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-[10px] text-[13px] outline-none focus:border-[var(--c-accent)]"
-            />
+        {/* Duration */}
+        <div className="space-y-1.5">
+          <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
+            Duration
+          </label>
+          <div className="w-full rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-hover)] p-[10px] text-[13px] font-mono text-[var(--c-text-muted)]">
+            {getDuration()} days
           </div>
         </div>
 
