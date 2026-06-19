@@ -246,8 +246,6 @@ export function createProject(name: string, data?: Partial<Project>): Project {
       description: p.description,
       status: p.status,
       priority: p.priority,
-      total_story_points: p.totalStoryPoints,
-      remaining_story_points: p.remainingStoryPoints,
       start_date: p.startDate,
       target_date: p.targetDate,
       tags: p.tags
@@ -266,8 +264,6 @@ export function updateProject(id: string, data: Partial<Project>) {
     if (data.description !== undefined) updateData.description = data.description;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.priority !== undefined) updateData.priority = data.priority;
-    if (data.totalStoryPoints !== undefined) updateData.total_story_points = data.totalStoryPoints;
-    if (data.remainingStoryPoints !== undefined) updateData.remaining_story_points = data.remainingStoryPoints;
     if (data.startDate !== undefined) updateData.start_date = data.startDate;
     if (data.targetDate !== undefined) updateData.target_date = data.targetDate;
     if (data.tags !== undefined) updateData.tags = data.tags;

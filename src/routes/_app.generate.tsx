@@ -7,7 +7,6 @@ import {
   Download,
   Save,
   Globe,
-  Code2,
   CheckCircle2,
   ChevronDown,
   X,
@@ -64,10 +63,8 @@ export const Route = createFileRoute("/_app/generate")({
 const FRAMEWORK = { id: "playwright", label: "Playwright", ext: ".spec.ts" } as const;
 
 const INPUT_TABS = [
-  { id: "text", label: "Text", icon: FileText },
-  { id: "file", label: "File Upload", icon: Upload },
-  { id: "url", label: "URL", icon: Globe },
-  { id: "api", label: "API Spec", icon: Code2 },
+  { id: "file", label: "Document Upload", icon: Upload },
+  { id: "url", label: "URL Upload", icon: Globe },
 ] as const;
 
 // Mock test case pool for streaming generation (no cap — all get generated)
@@ -401,11 +398,10 @@ function getTestCasesForModule(moduleName: string): Partial<TestCase>[] {
 function GeneratePage() {
   const assertPerm = useAssertPermission();
   const [featureDescription, setFeatureDescription] = useState("");
-  const [inputTab, setInputTab] = useState<string>("text");
-  const [text, setText] = useState("");
+  const [showFeatureDescriptionError, setShowFeatureDescriptionError] = useState(false);
+  const [inputTab, setInputTab] = useState<string>("file");
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
-  const [apiSpec, setApiSpec] = useState("");
   const [state, setState] = useState<"idle" | "generating" | "done">("idle");
   const [generated, setGenerated] = useState<GeneratedCase[]>([]);
   const input = useRef<HTMLInputElement>(null);
@@ -521,6 +517,22 @@ function GeneratePage() {
       return;
     }
 
+    if (!featureDescription.trim()) {
+      toast.error("Feature Description is required.");
+      setShowFeatureDescriptionError(true);
+      return;
+    }
+
+    if (inputTab === "file" && !file) {
+      toast.error("Please upload a document first.");
+      return;
+    }
+
+    if (inputTab === "url" && !url.trim()) {
+      toast.error("Please enter a URL first.");
+      return;
+    }
+
     if (!assertPerm("tests:generate")) {
       return;
     }
@@ -618,16 +630,12 @@ function GeneratePage() {
 
   function hasInput() {
     if (!selectedProjectId) return false;
-    if (featureDescription.trim().length > 0) return true;
+    if (featureDescription.trim().length === 0) return false;
     switch (inputTab) {
-      case "text":
-        return text.trim().length > 0;
       case "file":
         return file !== null;
       case "url":
         return url.trim().length > 0;
-      case "api":
-        return apiSpec.trim().length > 0;
       default:
         return false;
     }
@@ -854,11 +862,11 @@ ${systemLogs}`;
                       : `Generate test cases specifically for the [${selectedModuleName || "General"}] module based on this project's test plan.`)}
                 </div>
               </div>
-              {(featureDescription.trim() || text.trim() || url.trim() || apiSpec.trim()) && (
+              {(featureDescription.trim() || file || url.trim()) && (
                 <div>
                   <span className="text-gray-500 font-bold block mb-1">USER CONTEXT:</span>
                   <div className="bg-[#0C0A09] rounded-sm p-3 border border-[#2C2825] text-gray-300 max-h-[120px] overflow-y-auto break-words leading-relaxed">
-                    {featureDescription.trim() || text.trim() || url.trim() || apiSpec.trim()}
+                    {featureDescription.trim() || (file ? `File: ${file.name}` : "") || url.trim()}
                   </div>
                 </div>
               )}
@@ -868,16 +876,40 @@ ${systemLogs}`;
 
         {/* Feature Description (AI Prompt) */}
         <div className="rounded-[12px] border border-[var(--c-border)] bg-[var(--c-bg-card)] p-5 space-y-3">
-          <label className="block font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-            Feature Description (AI Prompt)
+          <label className="block font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--c-text-muted)] flex items-center justify-between">
+            <span>Feature Description (AI Prompt) <span className="text-[var(--c-fail)]">*</span></span>
+            {showFeatureDescriptionError && (
+              <span className="text-[10px] text-[var(--c-fail)] font-semibold lowercase tracking-normal">
+                Required Field
+              </span>
+            )}
           </label>
           <textarea
             value={featureDescription}
-            onChange={(e) => setFeatureDescription(e.target.value)}
+            onChange={(e) => {
+              setFeatureDescription(e.target.value);
+              if (e.target.value.trim()) {
+                setShowFeatureDescriptionError(false);
+              }
+            }}
+            onBlur={() => {
+              if (!featureDescription.trim()) {
+                setShowFeatureDescriptionError(true);
+              }
+            }}
             rows={3}
             placeholder="Describe the feature or component (e.g. 'A login form with email and password inputs, a remember me checkbox, and a forgot password link. Form validation should verify email structure and password length.')"
-            className="w-full resize-none rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-3 text-[13.5px] outline-none transition-all duration-[var(--t-fast)] focus:border-[var(--c-accent)] focus:shadow-[0_0_0_3px_var(--c-accent-soft)]"
+            className={`w-full resize-none rounded-[8px] border bg-[var(--c-bg-input)] p-3 text-[13.5px] outline-none transition-all duration-[var(--t-fast)] focus:shadow-[0_0_0_3px_var(--c-accent-soft)] ${
+              showFeatureDescriptionError
+                ? "border-[var(--c-fail)] focus:border-[var(--c-fail)]"
+                : "border-[var(--c-border)] focus:border-[var(--c-accent)]"
+            }`}
           />
+          {showFeatureDescriptionError && (
+            <p className="text-[11px] text-[var(--c-fail)] font-medium">
+              Feature Description is required.
+            </p>
+          )}
         </div>
 
         {/* Input tabs */}
@@ -895,15 +927,6 @@ ${systemLogs}`;
             ))}
           </div>
           <div className="p-6">
-            {inputTab === "text" && (
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={8}
-                placeholder="Paste user stories, acceptance criteria, API specs, or a short description of what you'd like covered…"
-                className="w-full resize-none rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-4 text-[14px] outline-none transition-all duration-[var(--t-fast)] focus:border-[var(--c-accent)] focus:shadow-[0_0_0_3px_var(--c-accent-soft)]"
-              />
-            )}
             {inputTab === "file" && (
               <>
                 <div
@@ -953,15 +976,6 @@ ${systemLogs}`;
                   We'll crawl the page and extract testable elements.
                 </p>
               </div>
-            )}
-            {inputTab === "api" && (
-              <textarea
-                value={apiSpec}
-                onChange={(e) => setApiSpec(e.target.value)}
-                rows={8}
-                placeholder='Paste an OpenAPI/Swagger spec, GraphQL schema, or API endpoint list…\n\n{\n  "openapi": "3.0.0",\n  "paths": { ... }\n}'
-                className="w-full resize-none rounded-[8px] border border-[var(--c-border)] bg-[var(--c-bg-input)] p-4 font-mono text-[13px] outline-none transition-all duration-[var(--t-fast)] focus:border-[var(--c-accent)] focus:shadow-[0_0_0_3px_var(--c-accent-soft)]"
-              />
             )}
           </div>
         </div>
