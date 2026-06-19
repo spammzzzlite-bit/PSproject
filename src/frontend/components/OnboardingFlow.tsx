@@ -1904,43 +1904,15 @@ export default function OnboardingFlow({ onComplete, onSkip, onNavigate, current
 
   // Derived briefing track
   const derivedTrack = useMemo(() => {
-    const userId = auth.user?.id;
-    if (!userId) return "command";
-
-    const metaRaw =
-      typeof window !== "undefined" ? localStorage.getItem("fieldnotes.workspace.meta") : null;
-    if (!metaRaw) {
-      return "command";
-    }
-
-    try {
-      const meta = JSON.parse(metaRaw);
-      const sharedRaw = localStorage.getItem("fieldnotes.shared.workspaces");
-      if (sharedRaw) {
-        const shared = JSON.parse(sharedRaw);
-        const ws = shared[meta.workspaceId];
-        if (ws) {
-          const mList = ws.members || [];
-          const m = mList.find((mem: any) => mem.userId === userId);
-          if (m) {
-            const role = m.role.toLowerCase() as any;
-            if (can(role, "workspace:viewKey")) return "command";
-            if (can(role, "project:create")) return "ops";
-            if (can(role, "suite:create")) return "field";
-            return "intel";
-          }
-        }
-      }
-    } catch (e) {
-      void e;
-    }
+    if (!auth.user?.id) return "command";
+    if (!workspaceMeta) return "command";
 
     const storeRole = currentRole.toLowerCase() as any;
     if (can(storeRole, "workspace:viewKey")) return "command";
     if (can(storeRole, "project:create")) return "ops";
     if (can(storeRole, "suite:create")) return "field";
     return "intel";
-  }, [auth.user?.id, currentRole]);
+  }, [auth.user?.id, workspaceMeta, currentRole]);
 
   const [briefingTrack, setBriefingTrack] = useState<"command" | "ops" | "field" | "intel">(
     "command",
@@ -2001,7 +1973,7 @@ export default function OnboardingFlow({ onComplete, onSkip, onNavigate, current
     setStepKey((k) => k + 1);
   }, []);
 
-  const completeWorkspaceSetup = useCallback(() => {
+  const completeWorkspaceSetup = useCallback(async () => {
     const userId = auth.user?.id;
     const email = auth.user?.email || "";
     if (!userId) return;
@@ -2010,47 +1982,27 @@ export default function OnboardingFlow({ onComplete, onSkip, onNavigate, current
     if (selectedRole === "developer") jobTitle = "Developer";
     if (selectedRole === "project_manager") jobTitle = "Project Manager";
 
-    const shouldSetupWorkspace = briefingTrack === "command" || !workspaceMeta;
+    if (workspaceMeta) {
+      if (briefingTrack === "command" && workspaceName) {
+        // Update workspace name in Supabase
+        await supabase
+          .from("workspaces")
+          .update({ name: workspaceName })
+          .eq("id", workspaceMeta.workspaceId);
+          
+        updateActiveWorkspaceMeta({
+          ...workspaceMeta,
+          workspaceName: workspaceName
+        });
+      }
+      
+      // Update member job title in Supabase
+      await supabase
+        .from("workspace_members")
+        .update({ job_title: jobTitle })
+        .eq("workspace_id", workspaceMeta.workspaceId)
+        .eq("user_id", userId);
 
-    if (shouldSetupWorkspace) {
-      const newWorkspaceId = crypto.randomUUID();
-      const newWorkspaceKey = generateWorkspaceKey();
-
-      const newMeta: WorkspaceMeta = {
-        workspaceId: newWorkspaceId,
-        workspaceName: workspaceName || "My Workspace",
-        workspaceKey: newWorkspaceKey,
-        ownerId: userId,
-        ownerEmail: email,
-        createdAt: new Date().toISOString(),
-        plan: "standard",
-      };
-
-      const ownerMember: WorkspaceMember = {
-        userId: userId,
-        email: email,
-        displayName: email.split("@")[0] || "Owner",
-        role: "owner",
-        jobTitle: jobTitle,
-        joinedAt: new Date().toISOString(),
-        addedBy: null,
-        avatarColor: getAvatarColor(email.split("@")[0] || "Owner"),
-        status: "active",
-      };
-
-      const sharedRaw = localStorage.getItem("fieldnotes.shared.workspaces");
-      const shared = sharedRaw ? JSON.parse(sharedRaw) : {};
-      shared[newWorkspaceId] = {
-        meta: newMeta,
-        members: [ownerMember],
-        pendingInvites: [],
-      };
-      localStorage.setItem("fieldnotes.shared.workspaces", JSON.stringify(shared));
-
-      localStorage.setItem(`fieldnotes.user.${userId}.role`, "owner");
-      updateActiveWorkspaceMeta(newMeta);
-      updateActiveWorkspaceMembers([ownerMember]);
-    } else {
       const updatedMembers = members.map((m) => {
         if (m.userId === userId) {
           return {
@@ -2063,8 +2015,6 @@ export default function OnboardingFlow({ onComplete, onSkip, onNavigate, current
       });
       updateActiveWorkspaceMembers(updatedMembers);
     }
-
-    window.dispatchEvent(new Event("storage"));
   }, [
     auth.user?.id,
     auth.user?.email,

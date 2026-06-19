@@ -128,31 +128,37 @@ function AuthPage() {
 
       setLoading(true);
 
-      const sharedRaw = localStorage.getItem("fieldnotes.shared.workspaces");
-      const shared = sharedRaw ? JSON.parse(sharedRaw) : {};
       let matchedWorkspaceId: string | null = null;
-      let matchedInvite: any = null;
+      let matchedRole: string | null = null;
 
-      for (const wsId of Object.keys(shared)) {
-        const ws = shared[wsId];
-        const pending = ws.pendingInvites || [];
-        const found = pending.find(
-          (inv: any) =>
-            (inv.email || "").toLowerCase() === (email || "").toLowerCase() &&
-            inv.status === "pending" &&
-            new Date(inv.expiresAt) > new Date(),
-        );
-        if (found && ws.meta.workspaceKey.toUpperCase() === workspaceKey.trim().toUpperCase()) {
-          matchedWorkspaceId = wsId;
-          matchedInvite = found;
-          break;
+      try {
+        // Find matching pending invite in Supabase
+        const { data: pendingInvite, error: inviteError } = await supabase
+          .from("workspace_members")
+          .select(`
+            workspace_id,
+            role,
+            workspaces!inner (
+              workspace_key
+            )
+          `)
+          .eq("email", email)
+          .eq("status", "pending")
+          .eq("workspaces.workspace_key", workspaceKey.trim().toUpperCase())
+          .maybeSingle();
+
+        if (inviteError || !pendingInvite) {
+          setFormError(
+            "No active invite found. Check your workspace key and email, or ask your team owner to resend the invite.",
+          );
+          setLoading(false);
+          return;
         }
-      }
 
-      if (!matchedWorkspaceId || !matchedInvite) {
-        setFormError(
-          "No active invite found. Check your workspace key and email, or ask your team owner to resend the invite.",
-        );
+        matchedWorkspaceId = pendingInvite.workspace_id;
+        matchedRole = pendingInvite.role;
+      } catch (err) {
+        setFormError("Failed to verify invite.");
         setLoading(false);
         return;
       }
@@ -166,80 +172,32 @@ function AuthPage() {
         });
 
         if (error) {
-          if (window.location.hostname === "localhost") {
-            userId = "mock-user-id-" + Math.random().toString(36).substring(2, 9);
-            const mockSession = {
-              access_token: "mock-access-token-" + userId,
-              token_type: "bearer",
-              expires_in: 3600,
-              refresh_token: "mock-refresh-token",
-              user: {
-                id: userId,
-                email,
-                email_confirmed_at: new Date().toISOString(),
-              },
-            };
-            localStorage.setItem("mock_auth", JSON.stringify(mockSession));
-          } else {
-            setFormError(parseAuthError(error));
-            setLoading(false);
-            return;
-          }
+          setFormError(parseAuthError(error));
+          setLoading(false);
+          return;
         } else {
           userId = data.user?.id || "";
         }
       } catch (err) {
-        if (window.location.hostname === "localhost") {
-          userId = "mock-user-id-" + Math.random().toString(36).substring(2, 9);
-          const mockSession = {
-            access_token: "mock-access-token-" + userId,
-            token_type: "bearer",
-            expires_in: 3600,
-            refresh_token: "mock-refresh-token",
-            user: {
-              id: userId,
-              email,
-              email_confirmed_at: new Date().toISOString(),
-            },
-          };
-          localStorage.setItem("mock_auth", JSON.stringify(mockSession));
-        } else {
-          setFormError("Authentication exception occurred.");
-          setLoading(false);
-          return;
-        }
+        setFormError("Authentication exception occurred.");
+        setLoading(false);
+        return;
       }
 
       if (userId) {
-        const ws = shared[matchedWorkspaceId];
-        ws.pendingInvites = ws.pendingInvites.filter(
-          (inv: any) => inv.inviteId !== matchedInvite.inviteId,
-        );
-
-        const newMember = {
-          userId: userId,
-          email: email,
-          displayName: email.split("@")[0],
-          role: matchedInvite.role,
-          jobTitle: matchedInvite.jobTitle,
-          joinedAt: new Date().toISOString(),
-          addedBy: matchedInvite.invitedBy,
-          avatarColor: getAvatarColor(email.split("@")[0]),
-          status: "active" as const,
-        };
-
-        ws.members = [...(ws.members || []), newMember];
-        localStorage.setItem("fieldnotes.shared.workspaces", JSON.stringify(shared));
-
-        localStorage.setItem("fieldnotes.workspace.meta", JSON.stringify(ws.meta));
-        localStorage.setItem("fieldnotes.workspace.members", JSON.stringify(ws.members));
-        const matchedRole = matchedInvite.role || "viewer";
-        localStorage.setItem(`fieldnotes.user.${userId}.role`, matchedRole.toLowerCase());
+        // Activate their membership in Supabase
+        await supabase
+          .from("workspace_members")
+          .update({
+            user_id: userId,
+            status: "active"
+          })
+          .eq("email", email)
+          .eq("workspace_id", matchedWorkspaceId);
 
         toast.success("Successfully joined workspace!");
 
-        const hasSession =
-          localStorage.getItem("mock_auth") || (await supabase.auth.getSession()).data.session;
+        const hasSession = (await supabase.auth.getSession()).data.session;
         if (hasSession) {
           window.location.href = "/onboarding";
         } else {
@@ -259,39 +217,7 @@ function AuthPage() {
 
     if (!isEmailValid || !isPassValid || !isConfirmValid) return;
 
-    const bypassLogins: Record<string, { id: string; email: string }> = {
-      "agent@fieldnotes.qa": { id: "agent-user-id-007", email: "agent@fieldnotes.qa" },
-      "admin@fieldnotes.qa": { id: "admin-user-id-008", email: "admin@fieldnotes.qa" },
-      "editor@fieldnotes.qa": { id: "editor-user-id-009", email: "editor@fieldnotes.qa" },
-      "viewer@fieldnotes.qa": { id: "viewer-user-id-010", email: "viewer@fieldnotes.qa" },
-    };
 
-    if (bypassLogins[email] && password === "password123") {
-      setLoading(true);
-      const mockUser = {
-        id: bypassLogins[email].id,
-        email: bypassLogins[email].email,
-        email_confirmed_at: new Date().toISOString(),
-      };
-      const mockSession = {
-        access_token: "mock-access-token",
-        token_type: "bearer",
-        expires_in: 3600,
-        refresh_token: "mock-refresh-token",
-        user: mockUser,
-      };
-      localStorage.setItem("mock_auth", JSON.stringify(mockSession));
-      
-      let role = "viewer";
-      if (email === "agent@fieldnotes.qa") role = "owner";
-      else if (email === "admin@fieldnotes.qa") role = "admin";
-      else if (email === "editor@fieldnotes.qa") role = "editor";
-      else if (email === "viewer@fieldnotes.qa") role = "viewer";
-      localStorage.setItem(`fieldnotes.user.${mockUser.id}.role`, role);
-      
-      window.location.href = "/";
-      return;
-    }
 
     setLoading(true);
     try {

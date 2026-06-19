@@ -34,51 +34,48 @@ export async function syncWorkspaceFromSupabase(workspaceId: string, userId: str
 
     const existing = existingByUid || existingByEmail;
 
-    if (!existing) {
-      // Check if workspace exists
-      const { data: wsData } = await supabase.from('workspaces').select('id').eq('id', workspaceId).maybeSingle();
-      if (!wsData) {
-        let workspaceName = workspaceId === 'ws-1001' ? 'QAMind AI Demo Workspace' : 'My Workspace';
-        try {
-          const metaRaw = localStorage.getItem("fieldnotes.workspace.meta");
-          if (metaRaw) {
-            const meta = JSON.parse(metaRaw);
-            if (meta.workspaceId === workspaceId && meta.workspaceName) {
-              workspaceName = meta.workspaceName;
-            }
-          }
-          if (workspaceName === 'My Workspace') {
-            const sharedRaw = localStorage.getItem("fieldnotes.shared.workspaces");
-            if (sharedRaw) {
-              const shared = JSON.parse(sharedRaw);
-              if (shared[workspaceId]?.meta?.workspaceName) {
-                workspaceName = shared[workspaceId].meta.workspaceName;
-              }
-            }
-          }
-        } catch (e) {
-          console.error("Failed to read workspace name from localStorage", e);
-        }
-
-        await supabase.from('workspaces').insert({
-          id: workspaceId,
-          name: workspaceName,
-          workspace_key: 'FNQ-' + Math.floor(Math.random() * 10000),
-          owner_id: userId,
-          owner_email: userEmail
-        });
-      }
-      
-      // Insert member
-      await supabase.from('workspace_members').insert({
-        workspace_id: workspaceId,
-        user_id: userId,
-        email: userEmail,
-        role: 'owner',
-        status: 'active'
-      });
+    if (existing) {
+      // User already has a membership (active or pending). 
+      // Do NOT create a new workspace. Do NOT change their role.
+      return;
     }
 
+    // No membership found — this is a truly new user with no invites.
+    // Check if workspace exists
+    const { data: wsData } = await supabase.from('workspaces').select('id').eq('id', workspaceId).maybeSingle();
+    if (!wsData) {
+      const workspaceName = workspaceId === 'ws-1001' ? 'QAMind AI Demo Workspace' : 'My Workspace';
+
+      await supabase.from('workspaces').insert({
+        id: workspaceId,
+        name: workspaceName,
+        workspace_key: 'FNQ-' + Math.floor(Math.random() * 10000),
+        owner_id: userId,
+        owner_email: userEmail
+      });
+    }
+    
+    // Insert member as owner
+    await supabase.from('workspace_members').insert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      email: userEmail,
+      role: 'owner',
+      status: 'active'
+    });
+
+  } catch (error) {
+    console.error("Failed to auto-provision workspace from Supabase", error);
+  }
+}
+
+/**
+ * Fetches the user's data from Supabase and populates the local stores.
+ */
+export async function fetchWorkspaceData(workspaceId: string) {
+  if (!workspaceId) return;
+
+  try {
     // 1. Fetch Projects
     const { data: projectsData } = await supabase.from('projects').select('*').eq('workspace_id', workspaceId);
     if (projectsData) {
@@ -181,6 +178,6 @@ export async function syncWorkspaceFromSupabase(workspaceId: string, userId: str
     }
 
   } catch (error) {
-    console.error("Failed to sync workspace from Supabase", error);
+    console.error("Failed to fetch workspace data from Supabase", error);
   }
 }

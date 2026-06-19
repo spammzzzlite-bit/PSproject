@@ -1635,20 +1635,21 @@ function TeamMembersCard() {
             {pendingInvites.map((inv: any) => {
               const badge = getRoleBadgeStyle(inv.role);
               const now = new Date();
-              const expires = new Date(inv.expiresAt);
+              const joined = new Date(inv.joinedAt || new Date());
+              const expires = new Date(joined.getTime() + 7 * 24 * 60 * 60 * 1000);
               const diffTime = expires.getTime() - now.getTime();
               const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
               const isExpired = diffDays <= 0;
               const isUrgent = diffDays > 0 && diffDays <= 2;
 
-              const inviter = members.find((m) => m.userId === inv.invitedBy);
+              const inviter = members.find((m) => m.userId === inv.addedBy);
               const inviterName = inviter
                 ? inviter.displayName || inviter.email.split("@")[0]
                 : "Unknown";
 
               return (
                 <div
-                  key={inv.inviteId}
+                  key={inv.userId}
                   className="flex items-center justify-between min-h-[64px] py-3 border-b border-[var(--c-border)]/50 last:border-b-0 px-2"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -1691,7 +1692,7 @@ function TeamMembersCard() {
                     {isExpired ? (
                       <PermissionGate action="members:add">
                         <button
-                          onClick={() => handleResendInvite(inv.inviteId, inv.email)}
+                          onClick={() => handleResendInvite(inv.userId, inv.email)}
                           className="rounded border border-[var(--c-border)] bg-[var(--c-bg-input)] px-2.5 py-1 text-[11px] font-medium text-[var(--c-accent)] hover:bg-[var(--c-bg-hover)] transition-colors"
                         >
                           Resend
@@ -1700,7 +1701,7 @@ function TeamMembersCard() {
                     ) : (
                       <PermissionGate action="members:add">
                         <button
-                          onClick={() => handleCancelInvite(inv.inviteId, inv.email)}
+                          onClick={() => handleCancelInvite(inv.userId, inv.email)}
                           className="p-1 text-[var(--c-text-muted)] hover:text-[var(--c-fail)] transition-colors"
                           title="Cancel Invite"
                         >

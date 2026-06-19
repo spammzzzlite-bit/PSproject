@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/backend/supabase";
 import type { Session, User } from "@supabase/supabase-js";
-import { syncWorkspaceFromSupabase } from "./supabase-sync";
+import { syncWorkspaceFromSupabase, fetchWorkspaceData } from "./supabase-sync";
 
 // ─── User-scoped localStorage stores ──────────────────────
 // Every store key is namespaced by the authenticated user's ID
@@ -1514,7 +1514,15 @@ export async function initializeStores(userId: string, userEmail?: string, userN
   currentUserId = userId;
 
   if (userId) {
-    const active = await resolveActiveWorkspace(userId);
+    let active = await resolveActiveWorkspace(userId);
+    
+    if (!active) {
+      // Auto-provision if no workspace membership exists (it will return early if they have a pending invite)
+      const defaultWsId = "ws-" + crypto.randomUUID().split("-")[0];
+      await syncWorkspaceFromSupabase(defaultWsId, userId, userEmail || "", userName || "");
+      active = await resolveActiveWorkspace(userId);
+    }
+
     if (active) {
       const ws = active.workspace as any;
       const meta: WorkspaceMeta = {
@@ -1543,7 +1551,7 @@ export async function initializeStores(userId: string, userEmail?: string, userN
       }
       
       // Fetch workspace data from Supabase directly
-      await syncWorkspaceFromSupabase(meta.workspaceId, userId, userEmail || "", userName || "");
+      await fetchWorkspaceData(meta.workspaceId);
       
       // Also fetch workspace members from Supabase
       const { data: membersData } = await supabase
