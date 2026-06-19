@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import OnboardingFlow from "@/frontend/components/OnboardingFlow";
-import { useAuth } from "@/frontend/store/store";
+import { useAuth, useCurrentRole } from "@/frontend/store/store";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/onboarding")({
 function OnboardingPage() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const currentRole = useCurrentRole();
 
   useEffect(() => {
     if (auth.loading) return;
@@ -62,6 +63,11 @@ function OnboardingPage() {
   }
 
   return (
-    <OnboardingFlow onComplete={handleComplete} onSkip={handleSkip} onNavigate={handleNavigate} />
+    <OnboardingFlow
+      currentRole={currentRole}
+      onComplete={handleComplete}
+      onSkip={handleSkip}
+      onNavigate={handleNavigate}
+    />
   );
 }

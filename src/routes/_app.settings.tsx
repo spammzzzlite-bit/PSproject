@@ -1047,21 +1047,55 @@ function TeamMembersCard() {
   };
 
   const handleSendInvite = () => {
+    if (!validateEmail(email)) return;
+
+    const existingInvites = JSON.parse(
+      localStorage.getItem("fieldnotes.pending_invites") || "{}"
+    );
+
+    const emailLower = email.toLowerCase().trim();
+
+    // Block duplicate pending invites for same email
+    if (
+      existingInvites[emailLower] &&
+      existingInvites[emailLower].status === "pending"
+    ) {
+      toast.error("An invite is already pending for this email.");
+      return;
+    }
+
+    // Also block if already an active member
+    if (members.some((m) => m.email.toLowerCase() === emailLower)) {
+      toast.error("This email is already an active member of the workspace.");
+      return;
+    }
+
     const newInvite = {
       inviteId: crypto.randomUUID(),
-      email: email.trim(),
-      role: role,
-      jobTitle: jobTitle.trim(),
-      invitedBy: auth.user?.id || "",
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      inviterUserId: auth.user?.id ?? "",
+      inviterName: auth.user?.user_metadata?.name || auth.user?.email?.split("@")[0] || "Your teammate",
+      workspaceName: workspaceMeta?.workspaceName || "the workspace",
+      assignedRole: role,           // the WorkspaceRole selected in the form
+      jobTitle: jobTitle.trim(),    // the job title string from the form
+      displayName: displayName.trim() || emailLower.split("@")[0],
+      email: emailLower,
       status: "pending",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,  // 7 days
     };
 
+    existingInvites[emailLower] = newInvite;
+
+    localStorage.setItem(
+      "fieldnotes.pending_invites",
+      JSON.stringify(existingInvites)
+    );
+
+    // Keep it in the shared workspaces list for the inviter to see
     const updatedInvites = [...pendingInvites, newInvite];
     updatePendingInvites(updatedInvites);
 
-    toast.success(`Invitation sent to ${email}.`);
+    toast.success(`Invite sent to ${emailLower}. They will be prompted to accept on next login.`);
     setIsModalOpen(false);
     resetFormState();
   };

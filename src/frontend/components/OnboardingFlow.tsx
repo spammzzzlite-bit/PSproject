@@ -1882,11 +1882,12 @@ function generateWorkspaceKey(): string {
 
 // ─── Main OnboardingFlow ──────────────────────────────────────────────────────
 
-export default function OnboardingFlow({ onComplete, onSkip, onNavigate }: Props) {
+export default function OnboardingFlow({ onComplete, onSkip, onNavigate, currentRole: propRole }: Props) {
   const auth = useAuth();
   const [, setSettings] = useSettings();
   const { currentUser } = useUserStore();
-  const currentRole = (currentUser?.role ?? "viewer").toLowerCase();
+  const currentRole = (propRole || currentUser?.role || "viewer").toLowerCase();
+
 
   const [workspaceMeta] = useWorkspaceMeta();
   const [members, updateActiveWorkspaceMembers] = useWorkspaceMembersList();

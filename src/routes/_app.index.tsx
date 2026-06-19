@@ -977,6 +977,93 @@ function GoogleUserLocationHeader() {
   );
 }
 
+function ProjectSwitcher({
+  projects,
+  activeProject,
+  onSelect,
+}: {
+  projects: any[];
+  activeProject: any;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  if (projects.length <= 1) return null;
+
+  return (
+    <div ref={ref} className="relative">
+      {/* Trigger */}
+      <button
+        id="project-switcher-trigger"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center justify-center w-8 h-8 rounded-full border transition-all duration-[var(--t-fast)] ${
+          open
+            ? "bg-[var(--c-accent-soft)] border-[var(--c-accent)] text-[var(--c-accent)]"
+            : "bg-[var(--c-bg-card)] border-[var(--c-border)] text-[var(--c-text-muted)] hover:border-[var(--c-border-strong)] hover:text-[var(--c-text)] hover:bg-[var(--c-bg-hover)]"
+        }`}
+        aria-label="Switch project"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <ArrowRight className={`h-4 w-4 transition-transform duration-[var(--t-fast)] ${open ? "rotate-[-90deg]" : "rotate-90"}`} />
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Select project"
+          className="absolute left-0 top-[calc(100%+8px)] z-50 min-w-[200px] rounded-[10px] border border-[var(--c-border)] bg-[var(--c-bg-card)] shadow-[var(--shadow-lg)] overflow-hidden animate-[fade-in-up_var(--t-normal)_var(--ease-out)_both]"
+          style={{ maxHeight: "260px", overflowY: "auto" }}
+        >
+          <div className="px-3 pt-3 pb-1.5">
+            <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--c-text-dim)]">Switch project</p>
+          </div>
+          {projects.map((p: any) => {
+            const isActive = p.id === activeProject.id;
+            return (
+              <button
+                key={p.id}
+                role="option"
+                aria-selected={isActive}
+                onClick={() => {
+                  onSelect(p.id);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] transition-colors duration-[var(--t-fast)] last:rounded-b-[10px] ${
+                  isActive
+                    ? "bg-[var(--c-accent-soft)] text-[var(--c-accent)]"
+                    : "text-[var(--c-text-muted)] hover:bg-[var(--c-bg-hover)] hover:text-[var(--c-text)]"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full shrink-0 ${isActive ? "bg-[var(--c-accent)]" : "bg-[var(--c-border-strong)]"}`}
+                />
+                <span className="flex-1 truncate font-medium">{p.name}</span>
+                {isActive && (
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--c-accent)] opacity-70">active</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Masthead({ projects, activeProject }: { projects: any[]; activeProject?: any }) {
   const auth = useAuth();
   const navigate = useNavigate();
@@ -1002,24 +1089,14 @@ function Masthead({ projects, activeProject }: { projects: any[]; activeProject?
                   {activeProject.name}
                 </h1>
                 <div className="relative mt-3">
-                  <select
-                    value={activeProject.id}
-                    onChange={(e) => {
-                      const nextId = e.target.value;
-                      setActiveProjectId(nextId);
-                      navigate({ to: "/", search: { projectId: nextId } });
+                  <ProjectSwitcher
+                    projects={projects}
+                    activeProject={activeProject}
+                    onSelect={(id) => {
+                      setActiveProjectId(id);
+                      navigate({ to: "/", search: { projectId: id } });
                     }}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  >
-                    {projects.map((p: any) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-[var(--c-bg-hover)] transition-colors border border-[var(--c-border)] pointer-events-none">
-                    <ArrowRight className="h-4 w-4 rotate-90 text-[var(--c-text-muted)]" />
-                  </div>
+                  />
                 </div>
               </div>
             </div>
@@ -1090,6 +1167,7 @@ function StatCard({
   error?: boolean;
   onRetry?: () => void;
 }) {
+
   const animatedValue = useCountUp(value);
   const [sparklineData, setSparklineData] = useState<
     { value: number | null; label: string }[] | null

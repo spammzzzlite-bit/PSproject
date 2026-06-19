@@ -27,6 +27,8 @@ import {
   ShieldCheck,
   ShieldAlert,
   Star,
+  Mail,
+  CheckCircle,
 } from "lucide-react";
 import { useAuth, signOut, initializeStores } from "@/frontend/store/store";
 import { supabase } from "@/backend/supabase";
@@ -187,6 +189,23 @@ function AppLayout() {
         const uEmail = auth.user.email || "";
         const uName = auth.user.user_metadata?.name || uEmail.split("@")[0] || "Workspace Owner";
         initializeStores(auth.user.id, uEmail, uName);
+
+        // BUG 3 PART B: Detect pending invite
+        const uEmailLower = uEmail.toLowerCase();
+        const sharedInvites = JSON.parse(
+          localStorage.getItem("fieldnotes.pending_invites") || "{}"
+        );
+        const pendingInvite = sharedInvites[uEmailLower];
+        if (
+          pendingInvite &&
+          pendingInvite.status === "pending" &&
+          pendingInvite.expiresAt > Date.now()
+        ) {
+          localStorage.setItem(
+            `fieldnotes.invite_pending.${auth.user.id}`,
+            JSON.stringify(pendingInvite)
+          );
+        }
       }
 
       // 4. Force new users to complete onboarding sequence before dashboard access
@@ -212,6 +231,7 @@ function AppLayout() {
 
   return (
     <PanelProvider>
+      <InviteAcceptModal userId={auth.user?.id ?? ""} />
       <AppShell />
       <Toaster
         position="bottom-right"
@@ -425,7 +445,7 @@ function AppShell() {
   const role = currentUser?.role ?? "viewer";
 
   const hasProjects = projects.length > 0;
-  const GATED_LABELS = new Set(["Dashboard", "Settings", "Help & Docs", "SuperAdmin", "Analytics", "Regression", "Traceability", "Reports"]);
+  const GATED_LABELS = new Set(["Dashboard", "Settings", "Help & Docs", "SuperAdmin"]);
 
   const roleLabels = ROLE_NAV_LABELS[role] || ROLE_NAV_LABELS.viewer;
 
@@ -577,31 +597,6 @@ function AppShell() {
                   <p className="mb-[4px] mt-[20px] px-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--c-text-dim)] flex items-center justify-between">
                     <span>
                       {g.group}
-                      {(() => {
-                        const isOwnerOrAdmin = can(role, "project:create");
-                        const isEditor = can(role, "suite:create") && !can(role, "project:create");
-                        const isViewer = !can(role, "suite:create");
-                        let hint = "";
-                        if (isOwnerOrAdmin) {
-                          if (g.group === "Workspace") hint = "Command Scope";
-                          if (g.group === "Insights") hint = "Intel Scope";
-                          if (g.group === "Account") hint = "Admin Access";
-                        } else if (isEditor) {
-                          if (g.group === "Workspace") hint = "Field Scope";
-                          if (g.group === "Insights") hint = "Field Scope";
-                          if (g.group === "Account") hint = "Standard Access";
-                        } else if (isViewer) {
-                          if (g.group === "Workspace") hint = "Intel Scope";
-                          if (g.group === "Insights") hint = "Intel Scope";
-                          if (g.group === "Account") hint = "Read-Only Access";
-                        }
-                        if (!hint) return null;
-                        return (
-                          <span className="text-[9px] lowercase italic text-[var(--c-text-dim)] font-sans ml-1.5 normal-case font-normal opacity-85">
-                            ({hint})
-                          </span>
-                        );
-                      })()}
                     </span>
                     {g.group === "Workspace" && can(role, "workspace:viewKey") && (
                       <span className="rounded-full bg-amber-500/15 text-[8.5px] text-amber-600 dark:text-amber-400 px-1.5 py-0.2 font-mono font-medium uppercase tracking-wider scale-90">
@@ -1129,4 +1124,108 @@ function ProjectSelectionModal({
 
 function escapeRegExp(string: string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function InviteAcceptModal({ userId }: { userId: string }) {
+  const [invite, setInvite] = useState<any>(null);
+
+  useEffect(() => {
+    const pending = localStorage.getItem(`fieldnotes.invite_pending.${userId}`);
+    if (pending) {
+      const parsed = JSON.parse(pending);
+      const accepted = localStorage.getItem(`fieldnotes.accepted_role.${userId}`);
+      if (!accepted) {
+        setInvite(parsed);
+      }
+    }
+  }, [userId]);
+
+  if (!invite) return null;
+
+  const handleAccept = () => {
+    localStorage.setItem(`fieldnotes.accepted_role.${userId}`, invite.assignedRole);
+    
+    const sharedInvites = JSON.parse(
+      localStorage.getItem("fieldnotes.pending_invites") || "{}"
+    );
+    if (sharedInvites[invite.email]) {
+      sharedInvites[invite.email].status = "accepted";
+      sharedInvites[invite.email].acceptedAt = Date.now();
+      sharedInvites[invite.email].acceptedByUserId = userId;
+      localStorage.setItem("fieldnotes.pending_invites", JSON.stringify(sharedInvites));
+    }
+    
+    localStorage.removeItem(`fieldnotes.invite_pending.${userId}`);
+    setInvite(null);
+    toast.success(`Welcome to ${invite.workspaceName}! You joined as ${invite.assignedRole}.`);
+  };
+
+  const handleDecline = () => {
+    localStorage.removeItem(`fieldnotes.invite_pending.${userId}`);
+    setInvite(null);
+    toast("Invite declined.");
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="w-full max-w-md rounded-xl bg-[var(--c-bg-card)] p-6 shadow-2xl border border-[var(--c-border)] relative overflow-hidden">
+        {/* Decorative elements */}
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[var(--c-accent)] to-transparent" />
+        <div className="absolute -top-10 -right-10 w-32 h-32 bg-[var(--c-accent)] opacity-10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="mb-6 flex justify-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--c-accent-soft)] border border-[var(--c-accent)] shadow-[0_0_15px_rgba(217,103,38,0.3)]">
+            <Mail className="h-6 w-6 text-[var(--c-accent)]" />
+          </div>
+        </div>
+
+        <h2 className="mb-2 text-center font-display text-2xl text-[var(--c-text)]">
+          You've been invited
+        </h2>
+        
+        <p className="mb-6 text-center text-sm text-[var(--c-text-muted)]">
+          <strong className="text-[var(--c-text)] font-semibold">{invite.inviterName}</strong> invited you to join <strong className="text-[var(--c-text)] font-semibold">{invite.workspaceName}</strong> as <strong className="text-[var(--c-text)] font-semibold">{invite.assignedRole}</strong>.
+        </p>
+
+        <div className="mb-8 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4 shadow-inner">
+          <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[var(--c-border)]">
+            <div className="h-8 w-8 rounded-full bg-[var(--c-border)] flex items-center justify-center text-xs font-bold text-[var(--c-text)]">
+              {invite.workspaceName.substring(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--c-text-dim)] mb-0.5">Workspace</p>
+              <p className="text-sm font-medium text-[var(--c-text)]">{invite.workspaceName}</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--c-text-dim)] mb-0.5">Role</p>
+              <p className="text-sm font-medium text-[var(--c-text)] capitalize">{invite.assignedRole}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--c-text-dim)] mb-0.5">Job Title</p>
+              <p className="text-sm font-medium text-[var(--c-text)]">{invite.jobTitle}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={handleDecline}
+            className="flex-1 rounded-md px-4 py-2.5 text-sm font-medium text-[var(--c-text)] transition-colors hover:bg-[var(--c-bg-hover)] hover:text-white border border-[var(--c-border)]"
+          >
+            Decline
+          </button>
+          <button
+            onClick={handleAccept}
+            className="flex-1 rounded-md bg-[var(--c-accent)] px-4 py-2.5 text-sm font-medium text-white transition-all hover:brightness-110 shadow-lg shadow-[var(--c-accent)]/20 flex justify-center items-center gap-2"
+          >
+            <CheckCircle className="w-4 h-4" />
+            Accept & Join
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

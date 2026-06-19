@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/backend/supabase";
 import type { Session, User } from "@supabase/supabase-js";
+import { syncWorkspaceFromSupabase } from "./supabase-sync";
 
 // ─── User-scoped localStorage stores ──────────────────────
 // Every store key is namespaced by the authenticated user's ID
@@ -24,14 +25,35 @@ interface Store<T> {
   _initial: T;
 }
 
-export function createStore<T>(baseKey: string, initial: T): Store<T> {
+function getCurrentWorkspaceId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("fieldnotes.workspace.meta");
+    if (raw) return JSON.parse(raw).workspaceId || null;
+  } catch (err) {
+    void err;
+  }
+  return null;
+}
+
+export function createStore<T>(
+  baseKey: string,
+  initial: T,
+  scope: "workspace" | "user" = "workspace"
+): Store<T> {
   let state: T = initial;
   const listeners = new Set<Listener>();
 
+  function getNamespace(): string | null {
+    if (scope === "user") return currentUserId;
+    return getCurrentWorkspaceId() || currentUserId;
+  }
+
   function load(): T {
-    if (typeof window === "undefined" || !currentUserId) return initial;
+    const ns = getNamespace();
+    if (typeof window === "undefined" || !ns) return initial;
     try {
-      const raw = localStorage.getItem(`${baseKey}.${currentUserId}`);
+      const raw = localStorage.getItem(`${baseKey}.${ns}`);
       if (raw) return JSON.parse(raw) as T;
     } catch (err) {
       void err;
@@ -43,16 +65,17 @@ export function createStore<T>(baseKey: string, initial: T): Store<T> {
   state = load();
 
   const get = () => {
-    if (!currentUserId) return initial;
+    if (!getNamespace()) return initial;
     return state;
   };
 
   const set = (next: T | ((prev: T) => T)) => {
-    if (!currentUserId) return; // Prevent writing without an active user
+    const ns = getNamespace();
+    if (!ns) return; // Prevent writing without an active namespace
     state = typeof next === "function" ? (next as (p: T) => T)(state) : next;
     if (typeof window !== "undefined") {
       try {
-        localStorage.setItem(`${baseKey}.${currentUserId}`, JSON.stringify(state));
+        localStorage.setItem(`${baseKey}.${ns}`, JSON.stringify(state));
       } catch (err) {
         void err;
       }
@@ -188,7 +211,7 @@ export type Project = {
 export const projectsStore = createStore<Project[]>("ai-test-gen.projects", []);
 export const useProjects = projectsStore.useStore;
 
-export const activeProjectStore = createStore<string>("ai-test-gen.activeProjectId", "");
+export const activeProjectStore = createStore<string>("ai-test-gen.activeProjectId", "", "user");
 export const useActiveProjectId = activeProjectStore.useStore;
 
 export function createProject(name: string, data?: Partial<Project>): Project {
@@ -212,10 +235,45 @@ export function createProject(name: string, data?: Partial<Project>): Project {
   projectsStore.set((prev) => [p, ...prev]);
   addActivity("project_created", `Project "${name}" created`);
   scaffoldSprintsForProject(p);
+  
+  // Sync to Supabase
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("projects").insert({
+      id: p.id,
+      workspace_id: wsId,
+      name: p.name,
+      description: p.description,
+      status: p.status,
+      priority: p.priority,
+      total_story_points: p.totalStoryPoints,
+      remaining_story_points: p.remainingStoryPoints,
+      start_date: p.startDate,
+      target_date: p.targetDate,
+      tags: p.tags
+    }).then(r => { if(r.error) console.error(r.error) });
+  }
+  
   return p;
 }
 export function updateProject(id: string, data: Partial<Project>) {
   projectsStore.set((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
+  
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.priority !== undefined) updateData.priority = data.priority;
+    if (data.totalStoryPoints !== undefined) updateData.total_story_points = data.totalStoryPoints;
+    if (data.remainingStoryPoints !== undefined) updateData.remaining_story_points = data.remainingStoryPoints;
+    if (data.startDate !== undefined) updateData.start_date = data.startDate;
+    if (data.targetDate !== undefined) updateData.target_date = data.targetDate;
+    if (data.tags !== undefined) updateData.tags = data.tags;
+
+    supabase.from("projects").update(updateData).eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 export function deleteProject(id: string) {
   const p = projectsStore.get().find((p) => p.id === id);
@@ -250,6 +308,11 @@ export function deleteProject(id: string) {
   }
 
   addActivity("project_deleted", `Project "${p.name}" deleted`);
+
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("projects").delete().eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 export function addFiles(projectId: string, files: File[]) {
   projectsStore.set((prev) =>
@@ -307,7 +370,7 @@ export const workspacesStore = createStore<Workspace[]>("ai-test-gen.workspaces"
     createdAt: Date.now(),
     billingStatus: "active",
   },
-]);
+], "user");
 export const useWorkspaces = workspacesStore.useStore;
 
 export const workspaceMembersStore = createStore<LegacyWorkspaceMember[]>(
@@ -366,15 +429,28 @@ export const useWorkspaceMembers = workspaceMembersStore.useStore;
  */
 export function useCurrentRole(): WorkspaceRole {
   const { user } = useAuth();
+  const [members] = useWorkspaceMembers();
+
   if (!user) return "Viewer";
 
-  const stored =
-    typeof window !== "undefined" ? localStorage.getItem(`fieldnotes.user.${user.id}.role`) : null;
-  const role = stored?.toLowerCase();
-  if (role === "owner") return "Owner";
-  if (role === "admin") return "Admin";
-  if (role === "editor") return "Editor";
-  return "Viewer";
+  // Check for accepted invite role (shared, non-user-scoped)
+  if (typeof window !== "undefined") {
+    const acceptedRole = localStorage.getItem(
+      `fieldnotes.accepted_role.${user.id}`
+    );
+    if (
+      acceptedRole &&
+      ["Owner", "Admin", "Editor", "Viewer"].includes(acceptedRole)
+    ) {
+      return acceptedRole as WorkspaceRole;
+    }
+  }
+
+  // Fall back to workspace members store
+  const member = members.find(
+    (m) => m.userId === user.id && m.workspaceId === DEFAULT_WORKSPACE_ID
+  );
+  return member ? member.role : "Viewer";
 }
 
 /**
@@ -598,7 +674,7 @@ export const MOCK_PROFILES: Profile[] = [
   { id: "p5", fullName: "Michael K.", email: "michael.k@qanexus.ai", role: "DevOps Engineer" },
 ];
 
-export const profilesStore = createStore<Profile[]>("ai-test-gen.profiles", []);
+export const profilesStore = createStore<Profile[]>("ai-test-gen.profiles", [], "user");
 export const useProfiles = profilesStore.useStore;
 
 export function createProfile(
@@ -822,6 +898,17 @@ export function createSuite(projectId: string, name: string): TestSuite {
   };
   suitesStore.set((prev) => [s, ...prev]);
   addActivity("suite_created", `Suite "${name}" created`);
+  
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("test_suites").insert({
+      id: s.id,
+      project_id: s.projectId,
+      workspace_id: wsId,
+      name: s.name
+    }).then(r => { if(r.error) console.error(r.error) });
+  }
+  
   return s;
 }
 export function deleteSuite(id: string) {
@@ -830,9 +917,19 @@ export function deleteSuite(id: string) {
   // Also remove all test cases in this suite
   testCasesStore.set((prev) => prev.filter((tc) => tc.suiteId !== id));
   if (s) addActivity("suite_deleted", `Suite "${s.name}" deleted`);
+
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("test_suites").delete().eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 export function renameSuite(id: string, name: string) {
   suitesStore.set((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+  
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("test_suites").update({ name }).eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 
 // ─── Test Cases ───────────────────────────────────────────
@@ -909,10 +1006,53 @@ export function createTestCase(suiteId: string, data: Partial<TestCase>): TestCa
     prev.map((s) => (s.id === suiteId ? { ...s, testCaseIds: [...s.testCaseIds, tc.id] } : s)),
   );
   addActivity("testcase_created", `Test case "${tc.title}" created`);
+
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("test_cases").insert({
+      id: tc.id,
+      suite_id: tc.suiteId,
+      workspace_id: wsId,
+      title: tc.title,
+      steps: tc.steps,
+      expected: tc.expected,
+      priority: tc.priority,
+      author_status: tc.authorStatus,
+      last_run_status: tc.lastRunStatus,
+      last_run_id: tc.lastRunId,
+      tags: tc.tags,
+      type: tc.type,
+      assigned_to: tc.assignedTo,
+      requirement_id: tc.requirementId,
+      source_recording_id: tc.sourceRecordingId,
+      module_name: tc.module_name
+    }).then(r => { if(r.error) console.error(r.error) });
+  }
+
   return tc;
 }
 export function updateTestCase(id: string, data: Partial<TestCase>) {
   testCasesStore.set((prev) => prev.map((tc) => (tc.id === id ? { ...tc, ...data } : tc)));
+
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    const updateData: any = {};
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.steps !== undefined) updateData.steps = data.steps;
+    if (data.expected !== undefined) updateData.expected = data.expected;
+    if (data.priority !== undefined) updateData.priority = data.priority;
+    if (data.authorStatus !== undefined) updateData.author_status = data.authorStatus;
+    if (data.lastRunStatus !== undefined) updateData.last_run_status = data.lastRunStatus;
+    if (data.lastRunId !== undefined) updateData.last_run_id = data.lastRunId;
+    if (data.tags !== undefined) updateData.tags = data.tags;
+    if (data.type !== undefined) updateData.type = data.type;
+    if (data.assignedTo !== undefined) updateData.assigned_to = data.assignedTo;
+    if (data.requirementId !== undefined) updateData.requirement_id = data.requirementId;
+    if (data.sourceRecordingId !== undefined) updateData.source_recording_id = data.sourceRecordingId;
+    if (data.module_name !== undefined) updateData.module_name = data.module_name;
+
+    supabase.from("test_cases").update(updateData).eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 export function deleteTestCase(id: string) {
   const tc = testCasesStore.get().find((t) => t.id === id);
@@ -924,6 +1064,11 @@ export function deleteTestCase(id: string) {
       ),
     );
     addActivity("testcase_deleted", `Test case "${tc.title}" deleted`);
+  }
+
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("test_cases").delete().eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
   }
 }
 
@@ -1069,6 +1214,36 @@ export function createMockRun(
     "run_completed",
     `Test run ${run.id} completed — ${passedCount}/${results.length} passed`,
   );
+
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("test_runs").insert({
+      id: run.id,
+      project_id: run.projectId,
+      workspace_id: wsId,
+      suite_id: run.suiteId,
+      suite_name: run.suiteName,
+      project_name: run.projectName,
+      duration: run.duration,
+      status: run.status,
+      coverage: run.coverage,
+      environment: run.environment
+    }).then(() => {
+      // Insert run results after run is created
+      if (run.results.length > 0) {
+        supabase.from("test_run_results").insert(
+          run.results.map(r => ({
+            run_id: run.id,
+            test_case_id: r.testCaseId,
+            status: r.status,
+            duration: r.duration,
+            error_message: r.error
+          }))
+        ).then();
+      }
+    });
+  }
+
   return run;
 }
 
@@ -1114,7 +1289,7 @@ export function createBug(data: {
   environment?: string;
 }): BugReport {
   const bug: BugReport = {
-    id: `BUG-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+    id: crypto.randomUUID(), // Changed to valid UUID from generic BUG- prefix
     project_id: data.project_id,
     test_case_title: data.test_case_title,
     testCaseId: data.testCaseId,
@@ -1131,20 +1306,50 @@ export function createBug(data: {
   };
   bugsStore.set((prev) => [bug, ...prev]);
   addActivity("bug_filed", `Bug filed: "${bug.test_case_title}"`);
+
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("bugs").insert({
+      id: bug.id,
+      project_id: bug.project_id,
+      workspace_id: wsId,
+      test_case_title: bug.test_case_title,
+      test_case_id: bug.testCaseId,
+      run_id: bug.runId,
+      recording_session_id: bug.recordingSessionId,
+      error_message: bug.error_message,
+      code_snippet: bug.code_snippet,
+      developer_notes: bug.developer_notes,
+      is_resolved: bug.is_resolved,
+      resolved_at: bug.resolved_at,
+      severity: bug.severity,
+      environment: bug.environment
+    }).then(r => { if(r.error) console.error(r.error) });
+  }
+
   return bug;
 }
 
 export function updateBugNotes(id: string, notes: string | null) {
   bugsStore.set((prev) => prev.map((b) => (b.id === id ? { ...b, developer_notes: notes } : b)));
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("bugs").update({ developer_notes: notes }).eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 
 export function resolveBug(id: string) {
+  const now = new Date().toISOString();
   bugsStore.set((prev) =>
     prev.map((b) =>
-      b.id === id ? { ...b, is_resolved: true, resolved_at: new Date().toISOString() } : b,
+      b.id === id ? { ...b, is_resolved: true, resolved_at: now } : b,
     ),
   );
   addActivity("bug_updated", `Bug ${id} marked as resolved`);
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("bugs").update({ is_resolved: true, resolved_at: now }).eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 
 export function restoreBug(id: string) {
@@ -1152,10 +1357,18 @@ export function restoreBug(id: string) {
     prev.map((b) => (b.id === id ? { ...b, is_resolved: false, resolved_at: null } : b)),
   );
   addActivity("bug_updated", `Bug ${id} restored to active list`);
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("bugs").update({ is_resolved: false, resolved_at: null }).eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 
 export function deleteBug(id: string) {
   bugsStore.set((prev) => prev.filter((b) => b.id !== id));
+  const wsId = getCurrentWorkspaceId();
+  if (wsId) {
+    supabase.from("bugs").delete().eq("id", id).eq("workspace_id", wsId).then(r => { if(r.error) console.error(r.error) });
+  }
 }
 
 // ─── Activity Feed ────────────────────────────────────────
@@ -1320,6 +1533,7 @@ export type SettingsInfo = {
   dateFormat: string;
   twoFactorEnabled: boolean;
   coverageEnabled: boolean;
+  workspaceName: string;
 };
 export const settingsStore = createStore<SettingsInfo>("ai-test-gen.settings", {
   aiModel: "gpt-4o",
@@ -1338,7 +1552,8 @@ export const settingsStore = createStore<SettingsInfo>("ai-test-gen.settings", {
   dateFormat: "MM/DD/YYYY",
   twoFactorEnabled: false,
   coverageEnabled: false,
-});
+  workspaceName: "",
+}, "user");
 export const useSettings = settingsStore.useStore;
 
 // ─── Notifications Store ──────────────────────────────────
@@ -1368,7 +1583,7 @@ export const notificationsStore = createStore<AppNotification[]>("ai-test-gen.no
     createdAt: Date.now() - 3600000,
     type: "success",
   },
-]);
+], "user");
 export const useNotifications = notificationsStore.useStore;
 
 export function addNotification(
@@ -1432,85 +1647,97 @@ const ALL_STORES: Store<any>[] = [
  */
 export function initializeStores(userId: string, userEmail?: string, userName?: string) {
   const isNewUser = currentUserId !== userId;
+  currentUserId = userId;
+
+  // ── Step 1: Resolve workspace membership FIRST so that fieldnotes.workspace.meta
+  // is set before any workspace-scoped store loads its data.
+  if (userId) {
+    // Seed the bypass demo workspace structure if not already present
+    if (typeof window !== "undefined") {
+      const sharedRaw = localStorage.getItem("fieldnotes.shared.workspaces");
+      const shared = sharedRaw ? JSON.parse(sharedRaw) : {};
+      if (!shared["bypass-workspace-001"]) {
+        const bypassMeta: WorkspaceMeta = {
+          workspaceId: "bypass-workspace-001",
+          workspaceName: "QAMind AI Demo Workspace",
+          workspaceKey: "FNQ-DEMO-0001",
+          ownerId: "agent-user-id-007",
+          ownerEmail: "agent@fieldnotes.qa",
+          createdAt: new Date().toISOString(),
+          plan: "premium",
+        };
+
+        const bypassMembers: WorkspaceMember[] = [
+          {
+            userId: "agent-user-id-007",
+            email: "agent@fieldnotes.qa",
+            displayName: "Agent Owner",
+            role: "owner",
+            jobTitle: "Workspace Owner",
+            joinedAt: new Date().toISOString(),
+            addedBy: null,
+            avatarColor: getAvatarColor("Agent Owner"),
+            status: "active",
+          },
+          {
+            userId: "admin-user-id-008",
+            email: "admin@fieldnotes.qa",
+            displayName: "Demo Admin",
+            role: "admin",
+            jobTitle: "Lead QA Engineer",
+            joinedAt: new Date().toISOString(),
+            addedBy: "agent-user-id-007",
+            avatarColor: getAvatarColor("Demo Admin"),
+            status: "active",
+          },
+          {
+            userId: "editor-user-id-009",
+            email: "editor@fieldnotes.qa",
+            displayName: "Demo Editor",
+            role: "editor",
+            jobTitle: "QA Engineer",
+            joinedAt: new Date().toISOString(),
+            addedBy: "agent-user-id-007",
+            avatarColor: getAvatarColor("Demo Editor"),
+            status: "active",
+          },
+          {
+            userId: "viewer-user-id-010",
+            email: "viewer@fieldnotes.qa",
+            displayName: "Demo Viewer",
+            role: "viewer",
+            jobTitle: "Project Manager",
+            joinedAt: new Date().toISOString(),
+            addedBy: "agent-user-id-007",
+            avatarColor: getAvatarColor("Demo Viewer"),
+            status: "active",
+          },
+        ];
+
+        shared["bypass-workspace-001"] = {
+          meta: bypassMeta,
+          members: bypassMembers,
+          pendingInvites: [],
+        };
+        localStorage.setItem("fieldnotes.shared.workspaces", JSON.stringify(shared));
+      }
+    }
+
+    // Resolve membership — this writes fieldnotes.workspace.meta for this user
+    resolveWorkspaceMembership(userId, userEmail || "");
+  }
+
+  // ── Step 2: NOW reinit all stores — workspace-scoped stores will pick up
+  // the correct workspaceId that was just written into fieldnotes.workspace.meta.
   if (isNewUser) {
-    currentUserId = userId;
-    // Re-read all stores from their new user-scoped keys
     for (const store of ALL_STORES) {
       store._reinit();
     }
   }
 
-  // Seeding the bypass-workspace-001 shared storage if not exists
+  // ── Step 3: Bypass user role + demo data seeding (AFTER stores reinit so
+  // projectsStore.set() writes to the workspace-scoped key, not userId).
   if (typeof window !== "undefined") {
-    const sharedRaw = localStorage.getItem("fieldnotes.shared.workspaces");
-    const shared = sharedRaw ? JSON.parse(sharedRaw) : {};
-    if (!shared["bypass-workspace-001"]) {
-      const bypassMeta: WorkspaceMeta = {
-        workspaceId: "bypass-workspace-001",
-        workspaceName: "QAMind AI Demo Workspace",
-        workspaceKey: "FNQ-DEMO-0001",
-        ownerId: "agent-user-id-007",
-        ownerEmail: "agent@fieldnotes.qa",
-        createdAt: new Date().toISOString(),
-        plan: "premium",
-      };
-
-      const bypassMembers: WorkspaceMember[] = [
-        {
-          userId: "agent-user-id-007",
-          email: "agent@fieldnotes.qa",
-          displayName: "Agent Owner",
-          role: "owner",
-          jobTitle: "Workspace Owner",
-          joinedAt: new Date().toISOString(),
-          addedBy: null,
-          avatarColor: getAvatarColor("Agent Owner"),
-          status: "active",
-        },
-        {
-          userId: "admin-user-id-008",
-          email: "admin@fieldnotes.qa",
-          displayName: "Demo Admin",
-          role: "admin",
-          jobTitle: "Lead QA Engineer",
-          joinedAt: new Date().toISOString(),
-          addedBy: "agent-user-id-007",
-          avatarColor: getAvatarColor("Demo Admin"),
-          status: "active",
-        },
-        {
-          userId: "editor-user-id-009",
-          email: "editor@fieldnotes.qa",
-          displayName: "Demo Editor",
-          role: "editor",
-          jobTitle: "QA Engineer",
-          joinedAt: new Date().toISOString(),
-          addedBy: "agent-user-id-007",
-          avatarColor: getAvatarColor("Demo Editor"),
-          status: "active",
-        },
-        {
-          userId: "viewer-user-id-010",
-          email: "viewer@fieldnotes.qa",
-          displayName: "Demo Viewer",
-          role: "viewer",
-          jobTitle: "Project Manager",
-          joinedAt: new Date().toISOString(),
-          addedBy: "agent-user-id-007",
-          avatarColor: getAvatarColor("Demo Viewer"),
-          status: "active",
-        },
-      ];
-
-      shared["bypass-workspace-001"] = {
-        meta: bypassMeta,
-        members: bypassMembers,
-        pendingInvites: [],
-      };
-      localStorage.setItem("fieldnotes.shared.workspaces", JSON.stringify(shared));
-    }
-
-    // Checking if the user is a bypass credential user
     const isBypassUser = [
       "agent-user-id-007",
       "admin-user-id-008",
@@ -1526,7 +1753,7 @@ export function initializeStores(userId: string, userEmail?: string, userName?: 
       else if (userId === "viewer-user-id-010") role = "viewer";
       localStorage.setItem(`fieldnotes.user.${userId}.role`, role);
 
-      // Pre-populate data if projects are empty
+      // Pre-populate workspace demo data only if no projects exist yet
       const currentProj = projectsStore.get();
       if (currentProj.length === 0) {
         const p1Id = "demo-proj-001";
@@ -1663,7 +1890,7 @@ export function initializeStores(userId: string, userEmail?: string, userName?: 
     }
   }
 
-  // Seed user's own profile if empty
+  // ── Step 4: Seed this user's own profile (always user-scoped, so fine here)
   const currentProfiles = profilesStore.get();
   if (currentProfiles.length === 0) {
     const email = userEmail || "";
@@ -1678,7 +1905,7 @@ export function initializeStores(userId: string, userEmail?: string, userName?: 
     ]);
   }
 
-  // Seed user's role in namespaced localStorage if not set yet
+  // ── Step 5: Seed user's role in namespaced localStorage if not set yet
   if (typeof window !== "undefined") {
     const existing = localStorage.getItem(`fieldnotes.user.${userId}.role`);
     if (!existing) {
@@ -1690,13 +1917,16 @@ export function initializeStores(userId: string, userEmail?: string, userName?: 
     }
   }
 
-  // Resolve workspace membership
-  if (userId) {
-    resolveWorkspaceMembership(userId, userEmail || "");
-  }
-
   checkAndRefillTokens();
+
+  // ── Step 6: Sync from Supabase! ─────────────────────────────
+  const wsId = getCurrentWorkspaceId();
+  if (wsId && userId) {
+    syncWorkspaceFromSupabase(wsId, userId, userEmail || "", userName || "").catch(console.error);
+  }
 }
+
+
 
 /**
  * Call on sign-out to reset stores to empty state.
